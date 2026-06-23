@@ -1,0 +1,235 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  // url      = env("DATABASE_URL")
+}
+
+// ================= USER =================
+
+model User {
+  id           String @id @default(uuid()) @db.Uuid
+  email        String @unique
+  username     String
+  passwordHash String @map("password_hash")
+
+  avatarUrl String? @map("avatar_url")
+  bio       String?
+
+  isPremium Boolean @default(false) @map("is_premium")
+
+  premiumUntil DateTime? @map("premium_until")
+
+  dailyDownloadCount Int @default(0) @map("daily_download_count")
+
+  lastDownloadReset DateTime? @map("last_download_reset")
+
+  roleId String? @map("role_id") @db.Uuid
+
+  role Role? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  favorites     Favorite[]
+  downloads     Download[]
+  likes         WallpaperLike[]
+  subscriptions Subscription[]
+  sessions      UserSession[]
+
+  @@index([roleId])
+  @@map("users")
+}
+
+model Role {
+  id String @id @default(uuid()) @db.Uuid
+
+  name String @unique
+
+  description String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  users User[]
+
+  @@map("roles")
+}
+
+model UserSession {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token String @unique
+
+  ipAddress String? @map("ip_address")
+
+  userAgent String? @map("user_agent")
+
+  isActive Boolean @default(true) @map("is_active")
+
+  loginAt DateTime @default(now()) @map("login_at") @db.Timestamptz(6)
+
+  logoutAt DateTime? @map("logout_at") @db.Timestamptz(6)
+
+  @@index([userId])
+  @@index([token])
+  @@map("user_sessions")
+}
+
+// ================= CATEGORY =================
+
+model Category {
+  id String @id @default(uuid()) @db.Uuid
+
+  name String @unique
+
+  slug String @unique
+
+  icon String?
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  wallpapers Wallpaper[]
+
+  @@map("categories")
+}
+
+// ================= WALLPAPER =================
+
+model Wallpaper {
+  id String @id @default(uuid()) @db.Uuid
+
+  title String
+
+  description String?
+
+  imageUrl String? @map("image_url")
+
+  thumbnailUrl String? @map("thumbnail_url")
+
+  videoUrl String? @map("video_url")
+
+  quality String @default("4K")
+
+  resolution String @default("2160x3840")
+
+  isFeatured Boolean @default(false) @map("is_featured")
+
+  isPremium Boolean @default(false) @map("is_premium")
+
+  likes Int @default(0)
+
+  downloadCount Int @default(0) @map("download_count")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  categoryId String? @map("category_id") @db.Uuid
+
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  favorites Favorite[]
+
+  downloads Download[]
+
+  wallpaperLikes WallpaperLike[]
+
+  @@index([categoryId])
+  @@index([isPremium])
+  @@index([isFeatured])
+  @@map("wallpapers")
+}
+
+// ================= FAVORITES =================
+
+model Favorite {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+
+  wallpaperId String @map("wallpaper_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  wallpaper Wallpaper @relation(fields: [wallpaperId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, wallpaperId])
+  @@index([userId])
+  @@index([wallpaperId])
+  @@map("favorites")
+}
+
+// ================= DOWNLOAD =================
+
+model Download {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String? @map("user_id") @db.Uuid
+
+  wallpaperId String @map("wallpaper_id") @db.Uuid
+
+  quality String @default("4K")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  wallpaper Wallpaper @relation(fields: [wallpaperId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([wallpaperId])
+  @@map("downloads")
+}
+
+// ================= LIKES =================
+
+model WallpaperLike {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+
+  wallpaperId String @map("wallpaper_id") @db.Uuid
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  wallpaper Wallpaper @relation(fields: [wallpaperId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, wallpaperId])
+  @@index([userId])
+  @@index([wallpaperId])
+  @@map("wallpaper_likes")
+}
+
+// ================= SUBSCRIPTION =================
+
+model Subscription {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+
+  plan String
+
+  platform String
+
+  purchaseToken String @map("purchase_token")
+
+  startDate DateTime @map("start_date") @db.Timestamptz(6)
+
+  endDate DateTime @map("end_date") @db.Timestamptz(6)
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("subscriptions")
+}

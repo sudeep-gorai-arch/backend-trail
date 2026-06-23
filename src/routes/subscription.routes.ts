@@ -1,0 +1,10 @@
+import {Router} from 'express';
+import {authenticate} from '../middlewares/auth.middleware';
+import {asyncHandler} from '../utils/asyncHandler';
+import {subscriptionController} from '../controllers/subscription.controller';
+const router=Router();
+router.get('/plans',asyncHandler(subscriptionController.plans));
+router.use(authenticate);
+router.post('/verify',asyncHandler(subscriptionController.verify));
+router.get('/status',asyncHandler(subscriptionController.status));
+export default router;

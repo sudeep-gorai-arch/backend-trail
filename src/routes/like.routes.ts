@@ -1,0 +1,10 @@
+import {Router} from 'express';
+import {authenticate} from '../middlewares/auth.middleware';
+import {asyncHandler} from '../utils/asyncHandler';
+import {likeController} from '../controllers/like.controller';
+const router=Router();
+router.use(authenticate);
+router.post('/:id',asyncHandler(likeController.like));
+router.delete('/:id',asyncHandler(likeController.unlike));
+router.get('/:id/status',asyncHandler(likeController.status));
+export default router;
