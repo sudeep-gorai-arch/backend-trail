@@ -291,36 +291,36 @@ async function main() {
   // USERS
   //
 
-  const admin =
-    await prisma.user.create({
 
-      data: {
+  await prisma.user.create({
 
-        email: "admin@vividwalls.app",
+    data: {
 
-        username: "Admin",
+      email: "admin@vividwalls.app",
 
-        passwordHash:
-          await bcrypt.hash(
-            "Admin123",
-            10
-          ),
+      username: "Admin",
 
-        avatarUrl:
-          img("admin"),
+      passwordHash:
+        await bcrypt.hash(
+          "Admin123",
+          10
+        ),
 
-        bio:
-          "Application administrator",
+      avatarUrl:
+        img("admin"),
 
-        isPremium: true,
+      bio:
+        "Application administrator",
+
+      isPremium: true,
 
 
-        roleId:
-          adminRole.id
+      roleId:
+        adminRole.id
 
-      }
+    }
 
-    });
+  });
 
 
 
