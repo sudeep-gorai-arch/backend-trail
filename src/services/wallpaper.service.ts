@@ -52,13 +52,22 @@ type CreateWallpaperInput = {
   title: string;
 
 
-  description?: string;
+  description?: string | null;
 
 
   imageUrl: string;
 
 
-  thumbnailUrl?: string;
+  thumbnailUrl?: string | null;
+
+
+  videoUrl?: string | null;
+
+
+  r2Key?: string | null;
+
+
+  thumbnailKey?: string | null;
 
 
   categoryId: string;
@@ -76,7 +85,9 @@ type CreateWallpaperInput = {
   isFeatured: boolean;
 
 
+
 };
+
 
 
 
@@ -211,6 +222,7 @@ export const wallpaperService = {
 
 
 
+
     return {
 
       items,
@@ -221,7 +233,6 @@ export const wallpaperService = {
 
 
   },
-
 
 
 
@@ -254,6 +265,7 @@ export const wallpaperService = {
 
 
       });
+
 
 
 
@@ -439,6 +451,15 @@ export const wallpaperService = {
         thumbnailUrl: data.thumbnailUrl,
 
 
+        videoUrl: data.videoUrl,
+
+
+        r2Key: data.r2Key,
+
+
+        thumbnailKey: data.thumbnailKey,
+
+
         categoryId: data.categoryId,
 
 
@@ -511,6 +532,15 @@ export const wallpaperService = {
         thumbnailUrl: w.thumbnailUrl,
 
 
+        videoUrl: w.videoUrl,
+
+
+        r2Key: w.r2Key,
+
+
+        thumbnailKey: w.thumbnailKey,
+
+
         categoryId: w.categoryId,
 
 
@@ -537,8 +567,6 @@ export const wallpaperService = {
 
 
   },
-
-
 
 
 
@@ -595,8 +623,6 @@ export const wallpaperService = {
 
 
   },
-
-
 
 
 

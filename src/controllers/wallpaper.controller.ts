@@ -11,6 +11,49 @@ import {
 
 import { ApiError } from "../utils/ApiError";
 
+import {
+  uploadImageToR2,
+  deleteFromR2,
+} from "../services/r2.service";
+
+
+
+const getBodyArray = (
+  body: Record<string, unknown>,
+  field: string
+): string[] => {
+  const value = body[field];
+
+  if (Array.isArray(value)) {
+    return value.map(String);
+  }
+
+  if (typeof value === "string") {
+    return [value];
+  }
+
+  const values: string[] = [];
+
+  Object.keys(body).forEach((key) => {
+    const match = key.match(new RegExp(`^${field}\\[(\\d+)\\]$`));
+
+    if (!match) return;
+
+    const index = Number(match[1]);
+    values[index] = String(body[key] ?? "");
+  });
+
+  return values;
+};
+
+
+
+const removeFileExtension = (
+  filename: string
+) => {
+  return filename.replace(/\.[^/.]+$/, "");
+};
+
 
 
 export const wallpaperController = {
@@ -276,12 +319,11 @@ export const wallpaperController = {
 
 
 
-
-
-    const imagePath =
-      `/uploads/${file.filename}`;
-
-
+    const uploaded =
+      await uploadImageToR2(
+        file,
+        "wallpapers"
+      );
 
 
 
@@ -291,22 +333,38 @@ export const wallpaperController = {
 
 
         title:
-          req.body.title,
+          req.body.title
+          ||
+          removeFileExtension(
+            file.originalname
+          ),
 
 
 
         description:
-          req.body.description,
+          req.body.description
+          ||
+          "",
 
 
 
         imageUrl:
-          imagePath,
+          uploaded.url,
 
 
 
         thumbnailUrl:
-          imagePath,
+          uploaded.url,
+
+
+
+        r2Key:
+          uploaded.key,
+
+
+
+        thumbnailKey:
+          uploaded.key,
 
 
 
@@ -336,7 +394,6 @@ export const wallpaperController = {
 
 
       });
-
 
 
 
@@ -376,10 +433,9 @@ export const wallpaperController = {
 
 
 
-
-
   // =====================
   // BATCH UPLOAD
+  // POST /wallpapers/batch
   // =====================
 
 
@@ -409,115 +465,111 @@ export const wallpaperController = {
 
 
 
-
-
-
-
     const titles =
-      Array.isArray(req.body.titles)
-
-        ?
-
-        req.body.titles
-
-        :
-
-        [req.body.titles];
-
+      getBodyArray(
+        req.body,
+        "titles"
+      );
 
 
 
     const descriptions =
-      Array.isArray(
-        req.body.descriptions
-      )
-
-        ?
-
-        req.body.descriptions
-
-        :
-
-        [];
+      getBodyArray(
+        req.body,
+        "descriptions"
+      );
 
 
 
+    const wallpapers = [];
 
 
 
+    for (
+      let index = 0;
+      index < files.length;
+      index++
+    ) {
+
+      const file =
+        files[index];
 
 
-    const wallpapers =
-      files.map(
-        (
+
+      const uploaded =
+        await uploadImageToR2(
           file,
-          index
-        ) => {
+          "wallpapers"
+        );
 
 
 
-          const path =
-            `/uploads/${file.filename}`;
+      wallpapers.push({
+
+        title:
+          titles[index]
+          ||
+          removeFileExtension(
+            file.originalname
+          ),
 
 
 
-
-
-          return {
-
-
-            title:
-              titles[index]
-              ||
-              file.originalname,
+        description:
+          descriptions[index]
+          ||
+          "",
 
 
 
-            description:
-              descriptions[index]
-              ||
-              "",
+        imageUrl:
+          uploaded.url,
 
 
 
-
-            imageUrl: path,
-
-
-            thumbnailUrl: path,
+        thumbnailUrl:
+          uploaded.url,
 
 
 
-            categoryId:
-              req.body.categoryId,
+        r2Key:
+          uploaded.key,
 
 
 
-            quality:
-              req.body.quality,
+        thumbnailKey:
+          uploaded.key,
 
 
 
-            resolution:
-              req.body.resolution,
+        categoryId:
+          req.body.categoryId,
 
 
 
-            isPremium:
-              req.body.isPremium === "true",
+        quality:
+          req.body.quality,
 
 
 
-            isFeatured:
-              req.body.isFeatured === "true",
+        resolution:
+          req.body.resolution,
 
 
 
-          };
+        isPremium:
+          req.body.isPremium === "true",
 
 
-        });
 
+        isFeatured:
+          req.body.isFeatured === "true",
+
+
+
+      });
+
+    }
 
 
 
@@ -528,7 +580,6 @@ export const wallpaperController = {
         .createMany(
           wallpapers
         );
-
 
 
 
@@ -628,6 +679,35 @@ export const wallpaperController = {
     req: Request,
     res: Response
   ) {
+
+
+
+    const wallpaper =
+      await wallpaperService.getById(
+        req.params.id
+      );
+
+
+
+    const keysToDelete =
+      Array.from(
+        new Set(
+          [
+            wallpaper.r2Key,
+            wallpaper.thumbnailKey,
+          ].filter(Boolean)
+        )
+      ) as string[];
+
+
+
+    for (const key of keysToDelete) {
+
+      await deleteFromR2(
+        key
+      );
+
+    }
 
 
 
