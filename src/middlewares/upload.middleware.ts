@@ -1,84 +1,42 @@
-import multer from "multer";
-import path from "path";
+import multer, { FileFilterCallback } from "multer";
+import type { Request } from "express";
 
+/**
+ * Use memory storage because files will be uploaded directly to Cloudflare R2.
+ * Do not use local disk storage on Render for permanent uploads.
+ */
+const storage = multer.memoryStorage();
 
-const storage = multer.diskStorage({
+const fileFilter = (
+  _req: Request,
+  file: Express.Multer.File,
+  cb: FileFilterCallback
+) => {
+  const allowedTypes = [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+  ];
 
-    destination: (
-        _req,
-        _file,
-        cb
-    ) => {
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+    return;
+  }
 
-        cb(
-            null,
-            "uploads/"
-        );
+  cb(
+    new Error(
+      "Only JPG, JPEG, PNG and WEBP images are allowed"
+    )
+  );
+};
 
-    },
+export const upload = multer({
+  storage,
 
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+  },
 
-    filename: (
-        _req,
-        file,
-        cb
-    ) => {
-
-        const uniqueName =
-            Date.now()
-            + "-"
-            + Math.round(Math.random() * 1e9)
-            + path.extname(file.originalname);
-
-
-        cb(
-            null,
-            uniqueName
-        );
-
-    }
-
+  fileFilter,
 });
-
-
-
-export const upload =
-    multer({
-
-        storage,
-
-        limits: {
-            fileSize:
-                10 * 1024 * 1024
-        },
-
-        fileFilter: (
-            _req,
-            file,
-            cb
-        ) => {
-
-
-            if (
-                file.mimetype.startsWith(
-                    "image/"
-                )
-            ) {
-
-                cb(null, true);
-
-            }
-            else {
-
-                cb(
-                    new Error(
-                        "Only images allowed"
-                    )
-                );
-
-            }
-
-
-        }
-
-    });
