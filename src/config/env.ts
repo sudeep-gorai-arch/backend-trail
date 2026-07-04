@@ -38,6 +38,11 @@ const envSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string(),
 
   RAZORPAY_WEBHOOK_SECRET: z.string(),
+  R2_ACCOUNT_ID: z.string(),
+  R2_ACCESS_KEY_ID: z.string(),
+  R2_SECRET_ACCESS_KEY: z.string(),
+  R2_BUCKET_NAME: z.string(),
+  R2_PUBLIC_URL: z.string().url(),
 });
 
 const parsed = envSchema.safeParse(process.env);

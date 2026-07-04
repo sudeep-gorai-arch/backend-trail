@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 
 import { categoryService } from "../services/category.service";
 
-import { toCategoryDTO } from "../utils/dto";
+import { toCategoryDTO } from "../utils/dto/category.dto";
 
 import { response } from "../utils/ApiResponse";
 
