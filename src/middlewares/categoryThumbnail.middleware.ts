@@ -1,48 +1,41 @@
 import { Request, Response, NextFunction } from "express";
 import sharp from "sharp";
-import fs from "fs";
-import path from "path";
-
-const CATEGORY_DIR = path.join(
-    process.cwd(),
-    "storage",
-    "categories"
-);
-
-if (!fs.existsSync(CATEGORY_DIR)) {
-    fs.mkdirSync(CATEGORY_DIR, { recursive: true });
-}
 
 export async function compressCategoryThumbnail(
-    req: Request,
-    _res: Response,
-    next: NextFunction
+  req: Request,
+  _res: Response,
+  next: NextFunction
 ) {
-    try {
-        if (!req.file) return next();
-
-        const filename =
-            Date.now() + "_" + Math.random().toString(36).slice(2) + ".webp";
-
-        const output = path.join(CATEGORY_DIR, filename);
-
-        await sharp(req.file.path)
-            .resize(400, 400, {
-                fit: "cover",
-                position: "centre",
-            })
-            .webp({
-                quality: 72,
-                effort: 6,
-            })
-            .toFile(output);
-
-        fs.unlinkSync(req.file.path);
-
-        req.body.thumbnailUrl = `categories/${filename}`;
-
-        next();
-    } catch (err) {
-        next(err);
+  try {
+    if (!req.file) {
+      return next();
     }
+
+    if (!req.file.buffer || req.file.buffer.length === 0) {
+      return next(new Error("Uploaded thumbnail file buffer is empty."));
+    }
+
+    const compressedBuffer = await sharp(req.file.buffer)
+      .resize(400, 400, {
+        fit: "cover",
+        position: "centre",
+      })
+      .webp({
+        quality: 72,
+        effort: 6,
+      })
+      .toBuffer();
+
+    req.file.buffer = compressedBuffer;
+    req.file.mimetype = "image/webp";
+
+    req.file.originalname = req.file.originalname.replace(
+      /\.[^/.]+$/,
+      ".webp"
+    );
+
+    return next();
+  } catch (err) {
+    return next(err);
+  }
 }
