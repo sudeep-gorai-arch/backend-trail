@@ -1,7 +1,10 @@
 import { Request, Response } from 'express';
+
 import { favoriteService } from '../services/favorite.service';
+
 import { toWallpaperDTO } from '../utils/dto';
-import { sendSuccess, buildPagination } from '../utils/ApiResponse';
+
+import { response, buildPagination } from '../utils/ApiResponse';
 
 export const favoriteController = {
   async list(req: Request, res: Response) {
@@ -9,22 +12,43 @@ export const favoriteController = {
       limit: number;
       offset: number;
     };
+
     const { items, total } = await favoriteService.list(
       req.user!.id,
       limit,
       offset,
     );
-    sendSuccess(
+
+    response.success(
       res,
-      items.map((w) => toWallpaperDTO(req, w)),
-      { pagination: buildPagination(total, limit, offset, items.length) },
+      items.map(wallpaper => ({
+        ...toWallpaperDTO(req, wallpaper),
+        isFavorite: true,
+      })),
+      {
+        pagination: buildPagination(total, limit, offset, items.length),
+      },
     );
   },
 
   async add(req: Request, res: Response) {
-    const { wallpaperId } = req.body as { wallpaperId: string };
-    await favoriteService.add(req.user!.id, wallpaperId);
-    sendSuccess(res, { wallpaperId }, { status: 201, message: 'Added to favorites' });
+    const { wallpaperId } = req.body as {
+      wallpaperId: string;
+    };
+
+    const result = await favoriteService.add(req.user!.id, wallpaperId);
+
+    response.success(
+      res,
+      {
+        wallpaperId,
+        ...result,
+      },
+      {
+        status: 201,
+        message: 'Added to favorites',
+      },
+    );
   },
 
   async remove(req: Request, res: Response) {
@@ -32,6 +56,31 @@ export const favoriteController = {
       req.user!.id,
       req.params.wallpaperId,
     );
-    sendSuccess(res, result, { message: 'Removed from favorites' });
+
+    response.success(res, result, {
+      message: 'Removed from favorites',
+    });
+  },
+
+  async toggle(req: Request, res: Response) {
+    const result = await favoriteService.toggle(
+      req.user!.id,
+      req.params.wallpaperId,
+    );
+
+    response.success(res, result, {
+      message: result.favorite
+        ? 'Added to favorites'
+        : 'Removed from favorites',
+    });
+  },
+
+  async status(req: Request, res: Response) {
+    const result = await favoriteService.isFavorite(
+      req.user!.id,
+      req.params.wallpaperId,
+    );
+
+    response.success(res, result);
   },
 };

@@ -1,740 +1,632 @@
 import { Request, Response } from "express";
 
+import { WallpaperQuality } from "@prisma/client";
+
 import { wallpaperService } from "../services/wallpaper.service";
 
-import { toWallpaperDTO } from "../utils/dto";
-
-import {
-  sendSuccess,
-  buildPagination,
-} from "../utils/ApiResponse";
+import { response, buildPagination } from "../utils/ApiResponse";
 
 import { ApiError } from "../utils/ApiError";
 
-import {
-  uploadImageToR2,
-  deleteFromR2,
-} from "../services/r2.service";
+import { toWallpaperDTO } from "../utils/dto";
 
+// ======================================================
+// HELPERS
+// ======================================================
 
+function parseBooleanQuery(
+  value: unknown
+): boolean | undefined {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return undefined;
+  }
 
-const getBodyArray = (
-  body: Record<string, unknown>,
-  field: string
-): string[] => {
-  const value = body[field];
+  if (typeof value === "boolean") {
+    return value;
+  }
 
   if (Array.isArray(value)) {
-    return value.map(String);
+    return parseBooleanQuery(value[0]);
   }
 
-  if (typeof value === "string") {
-    return [value];
+  const normalized = String(value).trim().toLowerCase();
+
+  if (
+    normalized === "true" ||
+    normalized === "1" ||
+    normalized === "yes" ||
+    normalized === "on"
+  ) {
+    return true;
   }
 
-  const values: string[] = [];
+  if (
+    normalized === "false" ||
+    normalized === "0" ||
+    normalized === "no" ||
+    normalized === "off"
+  ) {
+    return false;
+  }
 
-  Object.keys(body).forEach((key) => {
-    const match = key.match(new RegExp(`^${field}\\[(\\d+)\\]$`));
+  return undefined;
+}
 
-    if (!match) return;
+function parseNumberQuery(
+  value: unknown,
+  fallback: number
+): number {
+  const parsed = Number(value);
 
-    const index = Number(match[1]);
-    values[index] = String(body[key] ?? "");
-  });
+  if (Number.isFinite(parsed) && parsed >= 0) {
+    return parsed;
+  }
 
-  return values;
-};
-
-
-
-const removeFileExtension = (
-  filename: string
-) => {
-  return filename.replace(/\.[^/.]+$/, "");
-};
-
-
+  return fallback;
+}
 
 export const wallpaperController = {
-
-
-
-  // =====================
+  // ======================================================
   // LIST
-  // GET /wallpapers
-  // =====================
+  // ======================================================
 
   async list(
     req: Request,
     res: Response
   ) {
+    const limit = parseNumberQuery(req.query.limit, 20);
 
+    const offset = parseNumberQuery(req.query.offset, 0);
 
-    const limit =
-      Number(req.query.limit) || 20;
+    const search = req.query.search as string | undefined;
 
+    const category = req.query.category as string | undefined;
 
-    const offset =
-      Number(req.query.offset) || 0;
+    const premium =
+      parseBooleanQuery(req.query.premium);
 
+    const featured =
+      parseBooleanQuery(req.query.featured);
 
+    const active =
+      parseBooleanQuery(req.query.active);
 
-    const search =
-      req.query.search as string | undefined;
+    const quality =
+      req.query.quality as WallpaperQuality | undefined;
 
+    const sort =
+      req.query.sort as
+        | "latest"
+        | "popular"
+        | "downloads"
+        | "likes"
+        | "featured"
+        | undefined;
 
-
-    const category =
-      req.query.category as string | undefined;
-
-
-
-
-    const {
-      items,
-      total
-    } =
+    const { items, total } =
       await wallpaperService.list({
-
         limit,
-
         offset,
-
         search,
-
         category,
-
+        premium,
+        featured,
+        active,
+        quality,
+        sort,
       });
 
-
-
-
-    sendSuccess(
-
+    response.success(
       res,
-
-      items.map(
-        w =>
-          toWallpaperDTO(
-            req,
-            w
-          )
+      items.map((wallpaper) =>
+        toWallpaperDTO(req, wallpaper)
       ),
-
       {
-
-        pagination:
-          buildPagination(
-
-            total,
-
-            limit,
-
-            offset,
-
-            items.length
-
-          )
-
+        pagination: buildPagination(
+          total,
+          limit,
+          offset,
+          items.length
+        ),
       }
-
     );
-
-
   },
 
-
-
-
-
-
-
-  // =====================
+  // ======================================================
   // FEATURED
-  // =====================
+  // ======================================================
 
   async featured(
     req: Request,
     res: Response
   ) {
-
-
     const limit =
-      Number(req.query.limit)
-      ||
-      10;
+      parseNumberQuery(req.query.limit, 10);
 
+    const wallpapers =
+      await wallpaperService.getFeatured(
+        limit
+      );
 
-
-    const items =
-      await wallpaperService
-        .getFeatured(limit);
-
-
-
-    sendSuccess(
-
+    response.success(
       res,
-
-      items.map(
-        w =>
-          toWallpaperDTO(
-            req,
-            w
-          )
+      wallpapers.map((wallpaper) =>
+        toWallpaperDTO(
+          req,
+          wallpaper
+        )
       )
-
     );
-
-
   },
 
-
-
-
-
-
-
-
-  // =====================
+  // ======================================================
   // TRENDING
-  // =====================
-
+  // ======================================================
 
   async trending(
     req: Request,
     res: Response
   ) {
-
-
     const limit =
-      Number(req.query.limit)
-      ||
-      10;
+      parseNumberQuery(req.query.limit, 20);
 
+    const wallpapers =
+      await wallpaperService.getTrending(
+        limit
+      );
 
-
-    const items =
-      await wallpaperService
-        .getTrending(limit);
-
-
-
-
-    sendSuccess(
-
+    response.success(
       res,
-
-      items.map(
-        w =>
-          toWallpaperDTO(
-            req,
-            w
-          )
+      wallpapers.map((wallpaper) =>
+        toWallpaperDTO(
+          req,
+          wallpaper
+        )
       )
-
     );
-
-
   },
 
+  // ======================================================
+  // PREMIUM
+  // ======================================================
 
+  async premium(
+    req: Request,
+    res: Response
+  ) {
+    const limit =
+      parseNumberQuery(req.query.limit, 20);
 
+    const wallpapers =
+      await wallpaperService.getPremium(
+        limit
+      );
 
+    response.success(
+      res,
+      wallpapers.map((wallpaper) =>
+        toWallpaperDTO(
+          req,
+          wallpaper
+        )
+      )
+    );
+  },
 
-
-
-
-
-  // =====================
-  // DETAIL
-  // =====================
-
+  // ======================================================
+  // GET BY ID
+  // ======================================================
 
   async getById(
     req: Request,
     res: Response
   ) {
-
-
-
-    const wallpaper =
-      await wallpaperService
-        .getById(
-          req.params.id
-        );
-
-
-
-    sendSuccess(
-
-      res,
-
-      toWallpaperDTO(
-        req,
-        wallpaper
-      )
-
-    );
-
-
-  },
-
-
-
-
-
-
-
-
-
-
-  // =====================
-  // CREATE SINGLE
-  // POST /wallpapers
-  // =====================
-
-
-  async create(
-    req: Request,
-    res: Response
-  ) {
-
-
-
-    const file =
-      req.file;
-
-
-
-
-    if (!file) {
-
-      throw ApiError.badRequest(
-        "Image required"
-      );
-
-    }
-
-
-
-    const uploaded =
-      await uploadImageToR2(
-        file,
-        "wallpapers"
-      );
-
-
-
-    const wallpaper =
-      await wallpaperService.create({
-
-
-
-        title:
-          req.body.title
-          ||
-          removeFileExtension(
-            file.originalname
-          ),
-
-
-
-        description:
-          req.body.description
-          ||
-          "",
-
-
-
-        imageUrl:
-          uploaded.url,
-
-
-
-        thumbnailUrl:
-          uploaded.url,
-
-
-
-        r2Key:
-          uploaded.key,
-
-
-
-        thumbnailKey:
-          uploaded.key,
-
-
-
-        categoryId:
-          req.body.categoryId,
-
-
-
-        quality:
-          req.body.quality,
-
-
-
-        resolution:
-          req.body.resolution,
-
-
-
-        isPremium:
-          req.body.isPremium === "true",
-
-
-
-        isFeatured:
-          req.body.isFeatured === "true",
-
-
-
-      });
-
-
-
-
-
-    sendSuccess(
-
-      res,
-
-      toWallpaperDTO(
-        req,
-        wallpaper
-      ),
-
-      {
-
-        status: 201,
-
-        message:
-          "Wallpaper uploaded"
-
-      }
-
-
-    );
-
-
-
-  },
-
-
-
-
-
-
-
-
-
-
-  // =====================
-  // BATCH UPLOAD
-  // POST /wallpapers/batch
-  // =====================
-
-
-  async batchUpload(
-    req: Request,
-    res: Response
-  ) {
-
-
-
-    const files =
-      req.files as Express.Multer.File[];
-
-
-
-
-    if (
-      !files ||
-      files.length === 0
-    ) {
-
-      throw ApiError.badRequest(
-        "Images required"
-      );
-
-    }
-
-
-
-    const titles =
-      getBodyArray(
-        req.body,
-        "titles"
-      );
-
-
-
-    const descriptions =
-      getBodyArray(
-        req.body,
-        "descriptions"
-      );
-
-
-
-    const wallpapers = [];
-
-
-
-    for (
-      let index = 0;
-      index < files.length;
-      index++
-    ) {
-
-      const file =
-        files[index];
-
-
-
-      const uploaded =
-        await uploadImageToR2(
-          file,
-          "wallpapers"
-        );
-
-
-
-      wallpapers.push({
-
-        title:
-          titles[index]
-          ||
-          removeFileExtension(
-            file.originalname
-          ),
-
-
-
-        description:
-          descriptions[index]
-          ||
-          "",
-
-
-
-        imageUrl:
-          uploaded.url,
-
-
-
-        thumbnailUrl:
-          uploaded.url,
-
-
-
-        r2Key:
-          uploaded.key,
-
-
-
-        thumbnailKey:
-          uploaded.key,
-
-
-
-        categoryId:
-          req.body.categoryId,
-
-
-
-        quality:
-          req.body.quality,
-
-
-
-        resolution:
-          req.body.resolution,
-
-
-
-        isPremium:
-          req.body.isPremium === "true",
-
-
-
-        isFeatured:
-          req.body.isFeatured === "true",
-
-
-
-      });
-
-    }
-
-
-
-
-
-    const result =
-      await wallpaperService
-        .createMany(
-          wallpapers
-        );
-
-
-
-
-
-    sendSuccess(
-
-      res,
-
-      result,
-
-      {
-
-        status: 201,
-
-        message:
-          `${files.length} wallpapers uploaded`
-
-      }
-
-    );
-
-
-
-  },
-
-
-
-
-
-
-
-
-
-  // =====================
-  // UPDATE
-  // =====================
-
-
-  async update(
-    req: Request,
-    res: Response
-  ) {
-
-
-
-    const wallpaper =
-      await wallpaperService.update(
-
-        req.params.id,
-
-        req.body
-
-      );
-
-
-
-
-    sendSuccess(
-
-      res,
-
-
-      toWallpaperDTO(
-        req,
-        wallpaper
-      ),
-
-      {
-
-        message:
-          "Wallpaper updated"
-
-      }
-
-    );
-
-
-
-  },
-
-
-
-
-
-
-
-
-
-
-  // =====================
-  // DELETE
-  // =====================
-
-
-  async delete(
-    req: Request,
-    res: Response
-  ) {
-
-
-
     const wallpaper =
       await wallpaperService.getById(
         req.params.id
       );
 
+    response.success(
+      res,
+      toWallpaperDTO(
+        req,
+        wallpaper
+      )
+    );
+  },
 
+  // ======================================================
+  // GET BY SLUG
+  // ======================================================
 
-    const keysToDelete =
-      Array.from(
-        new Set(
-          [
-            wallpaper.r2Key,
-            wallpaper.thumbnailKey,
-          ].filter(Boolean)
-        )
-      ) as string[];
-
-
-
-    for (const key of keysToDelete) {
-
-      await deleteFromR2(
-        key
+  async getBySlug(
+    req: Request,
+    res: Response
+  ) {
+    const wallpaper =
+      await wallpaperService.getBySlug(
+        req.params.slug
       );
 
+    response.success(
+      res,
+      toWallpaperDTO(
+        req,
+        wallpaper
+      )
+    );
+  },
+
+  // ======================================================
+  // GET BY CATEGORY
+  // ======================================================
+
+  async getByCategory(
+    req: Request,
+    res: Response
+  ) {
+    const limit =
+      parseNumberQuery(req.query.limit, 20);
+
+    const offset =
+      parseNumberQuery(req.query.offset, 0);
+
+    const {
+      category,
+      items,
+      total,
+    } =
+      await wallpaperService.getByCategory(
+        req.params.slug,
+        limit,
+        offset
+      );
+
+    response.success(
+      res,
+      {
+        category,
+
+        wallpapers: items.map(
+          (wallpaper) =>
+            toWallpaperDTO(
+              req,
+              wallpaper
+            )
+        ),
+      },
+      {
+        pagination:
+          buildPagination(
+            total,
+            limit,
+            offset,
+            items.length
+          ),
+      }
+    );
+  },
+
+  // ======================================================
+  // SEARCH
+  // ======================================================
+
+  async search(
+    req: Request,
+    res: Response
+  ) {
+    const q = req.query.q as string;
+
+    const limit =
+      parseNumberQuery(req.query.limit, 20);
+
+    const offset =
+      parseNumberQuery(req.query.offset, 0);
+
+    const {
+      items,
+      total,
+    } =
+      await wallpaperService.search(
+        q,
+        limit,
+        offset
+      );
+
+    response.success(
+      res,
+      items.map((wallpaper) =>
+        toWallpaperDTO(
+          req,
+          wallpaper
+        )
+      ),
+      {
+        pagination:
+          buildPagination(
+            total,
+            limit,
+            offset,
+            items.length
+          ),
+      }
+    );
+  },
+
+  // ======================================================
+  // RELATED
+  // ======================================================
+
+  async related(
+    req: Request,
+    res: Response
+  ) {
+    const limit =
+      parseNumberQuery(req.query.limit, 10);
+
+    const wallpapers =
+      await wallpaperService.related(
+        req.params.id,
+        limit
+      );
+
+    response.success(
+      res,
+      wallpapers.map(
+        (wallpaper) =>
+          toWallpaperDTO(
+            req,
+            wallpaper
+          )
+      )
+    );
+  },
+
+  // ======================================================
+  // CREATE
+  // ======================================================
+
+  async create(
+    req: Request,
+    res: Response
+  ) {
+    if (!req.file) {
+      throw ApiError.badRequest(
+        "Wallpaper image is required."
+      );
     }
 
+    const wallpaper =
+      await wallpaperService.create(
+        req.file,
+        req.body
+      );
 
+    response.created(
+      res,
+      toWallpaperDTO(
+        req,
+        wallpaper
+      ),
+      "Wallpaper uploaded successfully."
+    );
+  },
 
+  // ======================================================
+  // BATCH UPLOAD
+  // ======================================================
+
+  async batchUpload(
+    req: Request,
+    res: Response
+  ) {
+    const files =
+      req.files as Express.Multer.File[];
+
+    if (
+      !files ||
+      files.length === 0
+    ) {
+      throw ApiError.badRequest(
+        "Wallpaper images are required."
+      );
+    }
+
+    const wallpapers =
+      await wallpaperService.createMany(
+        files,
+        req.body
+      );
+
+    response.created(
+      res,
+      wallpapers.map(
+        (wallpaper) =>
+          toWallpaperDTO(
+            req,
+            wallpaper
+          )
+      ),
+      `${wallpapers.length} wallpapers uploaded successfully.`
+    );
+  },
+
+  // ======================================================
+  // UPDATE
+  // ======================================================
+
+  async update(
+    req: Request,
+    res: Response
+  ) {
+    const wallpaper =
+      await wallpaperService.update(
+        req.params.id,
+        req.body
+      );
+
+    response.success(
+      res,
+      toWallpaperDTO(
+        req,
+        wallpaper
+      ),
+      {
+        message:
+          "Wallpaper updated successfully.",
+      }
+    );
+  },
+
+  // ======================================================
+  // DELETE
+  // ======================================================
+
+  async delete(
+    req: Request,
+    res: Response
+  ) {
     await wallpaperService.delete(
       req.params.id
     );
 
-
-
-
-    sendSuccess(
-
+    response.success(
       res,
-
       {
-        deleted: true
+        deleted: true,
       },
-
       {
         message:
-          "Wallpaper deleted"
+          "Wallpaper deleted successfully.",
       }
+    );
+  },
 
+  // ======================================================
+  // TOGGLE FEATURED
+  // ======================================================
+
+  async toggleFeatured(
+    req: Request,
+    res: Response
+  ) {
+    const wallpaper =
+      await wallpaperService.toggleFeatured(
+        req.params.id
+      );
+
+    response.success(
+      res,
+      toWallpaperDTO(
+        req,
+        wallpaper
+      ),
+      {
+        message:
+          wallpaper.isFeatured
+            ? "Wallpaper marked as featured."
+            : "Wallpaper removed from featured.",
+      }
+    );
+  },
+
+  // ======================================================
+  // TOGGLE PREMIUM
+  // ======================================================
+
+  async togglePremium(
+    req: Request,
+    res: Response
+  ) {
+    const wallpaper =
+      await wallpaperService.togglePremium(
+        req.params.id
+      );
+
+    response.success(
+      res,
+      toWallpaperDTO(
+        req,
+        wallpaper
+      ),
+      {
+        message:
+          wallpaper.isPremium
+            ? "Wallpaper marked as premium."
+            : "Wallpaper removed from premium.",
+      }
+    );
+  },
+
+  // ======================================================
+  // TOGGLE ACTIVE
+  // ======================================================
+
+  async toggleActive(
+    req: Request,
+    res: Response
+  ) {
+    const wallpaper =
+      await wallpaperService.toggleActive(
+        req.params.id
+      );
+
+    response.success(
+      res,
+      toWallpaperDTO(
+        req,
+        wallpaper
+      ),
+      {
+        message:
+          wallpaper.active
+            ? "Wallpaper activated."
+            : "Wallpaper deactivated.",
+      }
+    );
+  },
+
+  // ======================================================
+  // INCREMENT VIEW COUNT
+  // ======================================================
+
+  async incrementViews(
+    req: Request,
+    res: Response
+  ) {
+    await wallpaperService.incrementViews(
+      req.params.id
     );
 
+    response.success(
+      res,
+      {
+        success: true,
+      }
+    );
+  },
 
-  }
+  // ======================================================
+  // INCREMENT DOWNLOAD COUNT
+  // ======================================================
 
+  async incrementDownloads(
+    req: Request,
+    res: Response
+  ) {
+    await wallpaperService.incrementDownloads(
+      req.params.id
+    );
 
+    response.success(
+      res,
+      {
+        success: true,
+      }
+    );
+  },
 };

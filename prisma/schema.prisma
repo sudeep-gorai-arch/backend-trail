@@ -10,36 +10,64 @@ datasource db {
 // ================= USER =================
 
 model User {
-  id           String @id @default(uuid()) @db.Uuid
-  email        String @unique
-  username     String
-  passwordHash String @map("password_hash")
+  id String @id @default(uuid()) @db.Uuid
+
+  email String @unique
+
+  username String
+
+  // Admin login users only
+  passwordHash String? @map("password_hash")
+
+  // Google mobile users
+  googleId String? @unique @map("google_id")
+
+  authProvider AuthProvider @default(LOCAL) @map("auth_provider")
 
   avatarUrl String? @map("avatar_url")
-  bio       String?
+
+  bio String?
+
+  lastSeen DateTime?
 
   isPremium Boolean @default(false) @map("is_premium")
 
   premiumUntil DateTime? @map("premium_until")
 
-  dailyDownloadCount Int @default(0) @map("daily_download_count")
+  favoriteCount Int @default(0)
 
-  lastDownloadReset DateTime? @map("last_download_reset")
+  dailyDownloadCount Int       @default(0) @map("daily_download_count")
+  lastDownloadReset  DateTime? @map("last_download_reset")
 
   roleId String? @map("role_id") @db.Uuid
 
   role Role? @relation(fields: [roleId], references: [id], onDelete: SetNull)
 
-  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
-  favorites     Favorite[]
-  downloads     Download[]
-  likes         WallpaperLike[]
+  sessions UserSession[]
+
+  favorites Favorite[]
+
+  downloads Download[]
+
+  wallpaperLikes WallpaperLike[]
+
   subscriptions Subscription[]
-  sessions      UserSession[]
+
+  payments Payment[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   @@index([roleId])
+  @@index([googleId])
   @@map("users")
+}
+
+enum AuthProvider {
+  LOCAL
+
+  GOOGLE
 }
 
 model Role {
@@ -91,10 +119,28 @@ model Category {
 
   icon String?
 
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  description String?
+
+  folderName String @unique @map("folder_name")
+
+  coverImage String? @map("cover_image")
+
+  thumbnailUrl String? @map("thumbnail_url")
+
+  wallpaperCount Int @default(0) @map("wallpaper_count")
+
+  active Boolean @default(true)
+
+  sortOrder Int @default(0) @map("sort_order")
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
 
   wallpapers Wallpaper[]
 
+  @@index([active])
+  @@index([sortOrder])
   @@map("categories")
 }
 
@@ -105,46 +151,130 @@ model Wallpaper {
 
   title String
 
+  slug String @unique
+
   description String?
 
-  imageUrl String? @map("image_url")
+  categoryId String @db.Uuid
 
-  thumbnailUrl String? @map("thumbnail_url")
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
-  videoUrl String? @map("video_url")
+  // Images
 
-  r2Key String? @map("r2_key")
+  originalPath String @map("original_path")
 
-  thumbnailKey String? @map("thumbnail_key")
+  displayPath String @map("display_path")
 
-  quality String @default("4K")
+  thumbnailPath String @map("thumbnail_path")
 
-  resolution String @default("2160x3840")
+  // Metadata
 
-  isFeatured Boolean @default(false) @map("is_featured")
+  originalName String @map("original_name")
 
-  isPremium Boolean @default(false) @map("is_premium")
+  fileName String @map("file_name")
 
-  likes Int @default(0)
+  mimeType String @map("mime_type")
 
-  downloadCount Int @default(0) @map("download_count")
+  extension String
 
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  // Dimensions
 
-  categoryId String? @map("category_id") @db.Uuid
+  width Int
 
-  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  height Int
+
+  aspectRatio Float @map("aspect_ratio")
+
+  // File size
+
+  originalSize Int @map("original_size")
+
+  displaySize Int @map("display_size")
+
+  thumbnailSize Int @map("thumbnail_size")
+
+  // Image quality
+
+  quality WallpaperQuality @default(UHD_4K)
+
+  format String @default("webp")
+
+  // Premium
+
+  isPremium Boolean @default(false)
+
+  isFeatured Boolean @default(false)
+
+  featuredOrder Int @default(0) @map("featured_order")
+
+  featuredAt DateTime? @map("featured_at")
+
+  active Boolean @default(true)
+
+  // Analytics
+
+  likeCount Int @default(0)
+
+  downloadCount Int @default(0)
+
+  viewCount Int @default(0)
+
+  // Search
+
+  dominantColor String? @map("dominant_color")
+
+  searchableText String? @map("searchable_text")
+
+  checksum String? @unique
+
+  blurHash String? @map("blur_hash")
+
+  cacheVersion Int @default(1) @map("cache_version")
+
+  status UploadStatus @default(PROCESSING)
+
+  createdAt DateTime @default(now())
+
+  deletedAt DateTime?
+
+  updatedAt DateTime @updatedAt
 
   favorites Favorite[]
 
-  downloads Download[]
+  downloadsHistory Download[]
 
-  wallpaperLikes WallpaperLike[]
+  wallpaperLikes    WallpaperLike[]
+  wallpaperVariants WallpaperVariant[]
+  wallpaperTags     WallpaperTag[]
 
   @@index([categoryId])
-  @@index([isPremium])
+  @@index([active])
   @@index([isFeatured])
+  @@index([isPremium])
+  @@index([downloadCount])
+  @@index([likeCount])
+  @@index([slug])
+  @@index([active, categoryId])
+  @@index([active, isPremium])
+  @@index([active, isFeatured])
+  @@index([categoryId, createdAt])
+  @@index([downloadCount, likeCount])
+  @@index([status])
   @@map("wallpapers")
+}
+
+enum WallpaperQuality {
+  HD
+  FULL_HD
+  QHD
+  UHD_4K
+  UHD_8K
+}
+
+enum UploadStatus {
+  PROCESSING
+  READY
+  FAILED
 }
 
 // ================= FAVORITES =================
@@ -168,12 +298,39 @@ model Favorite {
   @@map("favorites")
 }
 
-// ================= DOWNLOAD =================
+model Tag {
+  id String @id @default(uuid()) @db.Uuid
 
+  name String @unique
+
+  wallpapers WallpaperTag[]
+
+  @@index([name])
+  @@map("tags")
+}
+
+model WallpaperTag {
+  wallpaperId String @db.Uuid
+
+  tagId String @db.Uuid
+
+  wallpaper Wallpaper @relation(fields: [wallpaperId], references: [id], onDelete: Cascade)
+
+  tag Tag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([wallpaperId, tagId])
+  @@index([tagId])
+  @@index([wallpaperId])
+  @@map("wallpaper_tags")
+}
+
+// ================= DOWNLOAD =================
 model Download {
   id String @id @default(uuid()) @db.Uuid
 
   userId String? @map("user_id") @db.Uuid
+
+  guestId String? @map("guest_id")
 
   wallpaperId String @map("wallpaper_id") @db.Uuid
 
@@ -183,10 +340,14 @@ model Download {
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 
+  guest Guest? @relation(fields: [guestId], references: [id], onDelete: Cascade)
+
   wallpaper Wallpaper @relation(fields: [wallpaperId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([guestId])
   @@index([wallpaperId])
+  @@index([createdAt])
   @@map("downloads")
 }
 
@@ -211,29 +372,190 @@ model WallpaperLike {
   @@map("wallpaper_likes")
 }
 
+model WallpaperVariant {
+  id String @id @default(uuid()) @db.Uuid
+
+  wallpaperId String @db.Uuid
+
+  type VariantType
+
+  url String
+
+  width Int
+
+  height Int
+
+  size Int
+
+  format ImageFormat @default(WEBP)
+
+  compressionQuality Int
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  wallpaper Wallpaper @relation(fields: [wallpaperId], references: [id], onDelete: Cascade)
+
+  isDefault Boolean @default(false)
+
+  @@unique([wallpaperId, type])
+  @@index([wallpaperId])
+  @@index([type])
+  @@map("wallpaper_variants")
+}
+
+enum ImageFormat {
+  WEBP
+  JPG
+  PNG
+  AVIF
+}
+
+enum VariantType {
+  THUMBNAIL
+
+  DISPLAY
+
+  HD
+
+  FULL_HD
+
+  QHD
+
+  UHD
+
+  ORIGINAL
+}
+
 // ================= SUBSCRIPTION =================
 
 model Subscription {
   id String @id @default(uuid()) @db.Uuid
 
-  userId String @map("user_id") @db.Uuid
-
-  plan String
-
-  platform String
-
-  purchaseToken String @map("purchase_token")
-
-  startDate DateTime @map("start_date") @db.Timestamptz(6)
-
-  endDate DateTime @map("end_date") @db.Timestamptz(6)
-
-  active Boolean @default(true)
-
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  userId String @db.Uuid
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  plan SubscriptionPlan
+
+  platform SubscriptionPlatform
+
+  // Razorpay
+  orderId   String? @unique
+  paymentId String? @unique
+  signature String?
+
+  purchaseToken String? @unique
+
+  transactionId String?
+
+  amount Float?
+
+  currency String?
+
+  status PaymentStatus @default(PENDING)
+
+  startDate DateTime
+
+  endDate DateTime
+
+  payments Payment[]
+
+  active Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
   @@index([userId])
-  @@map("subscriptions")
+}
+
+model Payment {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @db.Uuid
+
+  subscriptionId String? @db.Uuid
+
+  orderId String @unique
+
+  paymentId String? @unique
+
+  signature String?
+
+  platform SubscriptionPlatform
+
+  amount Float
+
+  currency String
+
+  status PaymentStatus
+
+  receipt String?
+
+  notes Json?
+
+  paidAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  subscription Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@map("payments")
+}
+
+enum SubscriptionPlatform {
+  RAZORPAY
+
+  GOOGLE
+
+  APPLE
+
+  STRIPE
+}
+
+enum SubscriptionPlan {
+  FREE
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  LIFETIME
+}
+
+enum PaymentStatus {
+  PENDING
+
+  PAID
+
+  FAILED
+
+  CANCELLED
+
+  REFUNDED
+}
+
+model Guest {
+  id String @id
+
+  deviceHash String? @unique @map("device_hash")
+
+  dailyDownloadCount Int @default(0) @map("daily_download_count")
+
+  lastDownloadReset DateTime? @map("last_download_reset")
+
+  downloads Download[]
+
+  createdAt DateTime @default(now())
+
+  updatedAt DateTime @updatedAt
+
+  @@index([deviceHash])
+  @@map("guests")
 }

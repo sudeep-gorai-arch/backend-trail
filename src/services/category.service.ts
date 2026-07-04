@@ -1,173 +1,466 @@
-import prisma from '../config/prisma';
-import { ApiError } from '../utils/ApiError';
+import { Prisma } from "@prisma/client";
 
-const withCategory = {
-  category: { select: { id: true, name: true, slug: true, icon: true } },
-};
+import prisma from "../config/prisma";
+
+import { ApiError } from "../utils/ApiError";
+
+import { createCategoryFolders } from "../utils/storage";
+
+import {
+  generateSlug,
+  generateUniqueSlug,
+} from "../utils/slug";
+
+// =====================================================
+// TYPES
+// =====================================================
+
+export interface CreateCategoryInput {
+  name: string;
+
+  slug?: string;
+
+  icon?: string | null;
+
+  description?: string | null;
+
+  folderName?: string;
+
+  coverImage?: string | null;
+
+  thumbnailUrl?: string | null;
+
+  active?: boolean;
+
+  sortOrder?: number;
+}
+
+export interface UpdateCategoryInput {
+  name?: string;
+
+  slug?: string;
+
+  icon?: string | null;
+
+  description?: string | null;
+
+  coverImage?: string | null;
+
+  thumbnailUrl?: string | null;
+
+  active?: boolean;
+
+  sortOrder?: number;
+}
+
+// =====================================================
+// PRISMA INCLUDE
+// =====================================================
+
+const categoryInclude = {
+  _count: {
+    select: {
+      wallpapers: true,
+    },
+  },
+} satisfies Prisma.CategoryInclude;
+
+// =====================================================
+// MAPPER
+// =====================================================
+
+const mapCategory = (
+  category: Prisma.CategoryGetPayload<{
+    include: typeof categoryInclude;
+  }>
+) => ({
+  id: category.id,
+
+  name: category.name,
+
+  slug: category.slug,
+
+  icon: category.icon,
+
+  description: category.description,
+
+  folderName: category.folderName,
+
+  coverImage: category.coverImage,
+
+  thumbnailUrl: category.thumbnailUrl,
+
+  wallpaperCount: category.wallpaperCount,
+
+  active: category.active,
+
+  sortOrder: category.sortOrder,
+
+  createdAt: category.createdAt,
+
+  updatedAt: category.updatedAt,
+
+  count: category._count.wallpapers,
+});
+
+// =====================================================
+// HELPERS
+// =====================================================
+
+async function ensureUnique(
+  name: string,
+  slug: string,
+  ignoreId?: string
+) {
+  const existing =
+    await prisma.category.findFirst({
+      where: {
+        OR: [
+          {
+            name,
+          },
+          {
+            slug,
+          },
+        ],
+
+        ...(ignoreId && {
+          NOT: {
+            id: ignoreId,
+          },
+        }),
+      },
+    });
+
+  if (!existing) return;
+
+  if (existing.name === name) {
+    throw ApiError.conflict(
+      "Category name already exists."
+    );
+  }
+
+  throw ApiError.conflict(
+    "Category slug already exists."
+  );
+}
+
+// =====================================================
+// SERVICE
+// =====================================================
 
 export const categoryService = {
 
-
   async list() {
-
-
     const categories =
       await prisma.category.findMany({
+        include: categoryInclude,
 
-        orderBy: {
-          name: "asc"
-        },
-
-
-        include: {
-
-          _count: {
-
-            select: {
-              wallpapers: true
-            }
-
-          }
-
-        }
-
-
+        orderBy: [
+          {
+            sortOrder: "asc",
+          },
+          {
+            name: "asc",
+          },
+        ],
       });
 
-
-
-    return categories.map((c) => ({
-
-
-      id: c.id,
-
-
-      name: c.name,
-
-
-      slug: c.slug,
-
-
-      icon: c.icon,
-
-
-      createdAt: c.createdAt,
-
-
-      count: c._count.wallpapers
-
-
-    }));
-
-
+    return categories.map(
+      mapCategory
+    );
   },
-
-
-
-
 
   async getBySlug(slug: string) {
-
-
     const category =
       await prisma.category.findUnique({
-
         where: {
-          slug
-        }
+          slug,
+        },
 
+        include: categoryInclude,
       });
 
-
-
     if (!category) {
-
       throw ApiError.notFound(
-        `Category '${slug}' not found`
+        "Category not found."
       );
-
     }
 
-
-
-    return category;
-
-
+    return mapCategory(category);
   },
 
+  async create(data: CreateCategoryInput) {
+    const name = data.name.trim();
 
+    const slug = data.slug
+      ? generateSlug(data.slug)
+      : await generateUniqueSlug(
+        "category",
+        name
+      );
 
+    if (!slug) {
+      throw ApiError.badRequest(
+        "Invalid category slug."
+      );
+    }
 
+    await ensureUnique(name, slug);
 
-  async getWallpapers(
-    slug: string,
-    limit: number,
-    offset: number
-  ) {
+    const folderName =
+      data.folderName ??
+      slug.replace(/-/g, "_");
 
-
+    createCategoryFolders(folderName);
 
     const category =
-      await this.getBySlug(slug);
+      await prisma.category.create({
+        data: {
+          name,
 
+          slug,
 
+          icon: data.icon,
 
-    const where = {
+          description:
+            data.description,
 
-      categoryId:
-        category.id
+          folderName,
 
-    };
+          coverImage:
+            data.coverImage,
 
+          thumbnailUrl:
+            data.thumbnailUrl,
 
+          active:
+            data.active ?? true,
 
+          sortOrder:
+            data.sortOrder ?? 0,
+        },
 
-    const [items, total] =
-      await Promise.all([
+        include: categoryInclude,
+      });
 
+    return mapCategory(category);
+  },
 
-        prisma.wallpaper.findMany({
+  async update(
+    slug: string,
+    data: UpdateCategoryInput
+  ) {
+    const existing =
+      await prisma.category.findUnique({
+        where: {
+          slug,
+        },
+      });
 
-          where,
+    if (!existing) {
+      throw ApiError.notFound(
+        "Category not found."
+      );
+    }
 
-          include: withCategory,
+    const updateData: Prisma.CategoryUpdateInput =
+      {};
 
-          orderBy: {
-            createdAt: "desc"
+    if (data.name !== undefined) {
+      updateData.name =
+        data.name.trim();
+    }
+
+    if (data.slug !== undefined) {
+      const nextSlug =
+        await generateUniqueSlug(
+          "category",
+          data.slug,
+          existing.id
+        );
+
+      await ensureUnique(
+        data.name ??
+        existing.name,
+        nextSlug,
+        existing.id
+      );
+
+      updateData.slug =
+        nextSlug;
+    }
+
+    if (data.icon !== undefined) {
+      updateData.icon =
+        data.icon;
+    }
+
+    if (
+      data.description !==
+      undefined
+    ) {
+      updateData.description =
+        data.description;
+    }
+
+    if (
+      data.coverImage !==
+      undefined
+    ) {
+      updateData.coverImage =
+        data.coverImage;
+    }
+
+    if (
+      data.thumbnailUrl !==
+      undefined
+    ) {
+      updateData.thumbnailUrl =
+        data.thumbnailUrl;
+    }
+
+    if (
+      data.active !==
+      undefined
+    ) {
+      updateData.active =
+        data.active;
+    }
+
+    if (
+      data.sortOrder !==
+      undefined
+    ) {
+      updateData.sortOrder =
+        data.sortOrder;
+    }
+
+    const category =
+      await prisma.category.update({
+        where: {
+          id: existing.id,
+        },
+
+        data: updateData,
+
+        include:
+          categoryInclude,
+      });
+
+    return mapCategory(category);
+  },
+
+  async delete(slug: string) {
+    const category =
+      await prisma.category.findUnique({
+        where: {
+          slug,
+        },
+
+        include: {
+          _count: {
+            select: {
+              wallpapers: true,
+            },
           },
+        },
+      });
 
-          skip: offset,
+    if (!category) {
+      throw ApiError.notFound(
+        "Category not found."
+      );
+    }
 
-          take: limit
+    if (
+      category._count.wallpapers >
+      0
+    ) {
+      throw ApiError.badRequest(
+        "Cannot delete a category that contains wallpapers."
+      );
+    }
 
-
-        }),
-
-
-
-
-        prisma.wallpaper.count({
-          where
-        })
-
-
-      ]);
-
-
-
+    await prisma.category.delete({
+      where: {
+        id: category.id,
+      },
+    });
 
     return {
-
-      category,
-
-      items,
-
-      total
-
+      deleted: true,
+      category:
+        mapCategory(category),
     };
+  },
 
+  async toggleActive(
+    slug: string
+  ) {
+    const category =
+      await prisma.category.findUnique({
+        where: {
+          slug,
+        },
+      });
 
-  }
+    if (!category) {
+      throw ApiError.notFound(
+        "Category not found."
+      );
+    }
 
+    const updated =
+      await prisma.category.update({
+        where: {
+          id: category.id,
+        },
 
-};
+        data: {
+          active:
+            !category.active,
+        },
+
+        include:
+          categoryInclude,
+      });
+
+    return mapCategory(updated);
+  },
+
+  async reorder(
+    slug: string,
+    sortOrder: number
+  ) {
+    const category =
+      await prisma.category.findUnique({
+        where: {
+          slug,
+        },
+      });
+
+    if (!category) {
+      throw ApiError.notFound(
+        "Category not found."
+      );
+    }
+
+    const updated =
+      await prisma.category.update({
+        where: {
+          id: category.id,
+        },
+
+        data: {
+          sortOrder,
+        },
+
+        include:
+          categoryInclude,
+      });
+
+    return mapCategory(updated);
+  },
+
+}

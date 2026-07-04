@@ -1,11 +1,49 @@
-import { Router } from 'express';
-import { userController } from '../controllers/user.controller';
-import { authenticate } from '../middlewares/auth.middleware';
-import { asyncHandler } from '../utils/asyncHandler';
+import { Router } from "express";
+
+import { authenticate } from "../middlewares/auth.middleware";
+
+import { asyncHandler } from "../utils/asyncHandler";
+
+import { userController } from "../controllers/user.controller";
 
 const router = Router();
 
-// GET /api/users/me  (protected)
-router.get('/me', authenticate, asyncHandler(userController.me));
+router.use(authenticate);
+
+// ==============================
+// ME
+// GET /api/users/me
+// ==============================
+
+router.get(
+    "/me",
+    asyncHandler(
+        userController.me
+    )
+);
+
+// ==============================
+// UPDATE PROFILE
+// PUT /api/users/me
+// ==============================
+
+router.put(
+    "/me",
+    asyncHandler(
+        userController.updateProfile
+    )
+);
+
+// ==============================
+// DELETE ACCOUNT
+// DELETE /api/users/me
+// ==============================
+
+router.delete(
+    "/me",
+    asyncHandler(
+        userController.deleteAccount
+    )
+);
 
 export default router;

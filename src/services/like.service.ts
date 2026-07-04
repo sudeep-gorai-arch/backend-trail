@@ -1,17 +1,131 @@
-import prisma from '../config/prisma';
-export const likeService={
- async like(userId:string,wallpaperId:string){
-  await prisma.wallpaperLike.upsert({where:{userId_wallpaperId:{userId,wallpaperId}},update:{},create:{userId,wallpaperId}});
-  await prisma.wallpaper.update({where:{id:wallpaperId},data:{likes:{increment:1}}}).catch(()=>{});
-  return {liked:true};
- },
- async unlike(userId:string,wallpaperId:string){
-  await prisma.wallpaperLike.delete({where:{userId_wallpaperId:{userId,wallpaperId}}}).catch(()=>null);
-  await prisma.wallpaper.update({where:{id:wallpaperId},data:{likes:{decrement:1}}}).catch(()=>{});
-  return {liked:false};
- },
- async status(userId:string,wallpaperId:string){
-  const row=await prisma.wallpaperLike.findUnique({where:{userId_wallpaperId:{userId,wallpaperId}}});
-  return {liked:!!row};
- }
+import prisma from "../config/prisma";
+import { ApiError } from "../utils/ApiError";
+
+const getWallpaper = async (wallpaperId: string) => {
+    const wallpaper = await prisma.wallpaper.findUnique({
+        where: {
+            id: wallpaperId,
+        },
+    });
+
+    if (!wallpaper) {
+        throw ApiError.notFound("Wallpaper not found.");
+    }
+
+    return wallpaper;
+};
+
+export const likeService = {
+    async like(
+        userId: string,
+        wallpaperId: string
+    ) {
+        await getWallpaper(wallpaperId);
+
+        const existing =
+            await prisma.wallpaperLike.findUnique({
+                where: {
+                    userId_wallpaperId: {
+                        userId,
+                        wallpaperId,
+                    },
+                },
+            });
+
+        if (existing) {
+            return {
+                liked: true,
+            };
+        }
+
+        await prisma.$transaction([
+            prisma.wallpaperLike.create({
+                data: {
+                    userId,
+                    wallpaperId,
+                },
+            }),
+
+            prisma.wallpaper.update({
+                where: {
+                    id: wallpaperId,
+                },
+                data: {
+                    likeCount: {
+                        increment: 1,
+                    },
+                },
+            }),
+        ]);
+
+        return {
+            liked: true,
+        };
+    },
+
+    async unlike(
+        userId: string,
+        wallpaperId: string
+    ) {
+        const existing =
+            await prisma.wallpaperLike.findUnique({
+                where: {
+                    userId_wallpaperId: {
+                        userId,
+                        wallpaperId,
+                    },
+                },
+            });
+
+        if (!existing) {
+            return {
+                liked: false,
+            };
+        }
+
+        await prisma.$transaction([
+            prisma.wallpaperLike.delete({
+                where: {
+                    userId_wallpaperId: {
+                        userId,
+                        wallpaperId,
+                    },
+                },
+            }),
+
+            prisma.wallpaper.update({
+                where: {
+                    id: wallpaperId,
+                },
+                data: {
+                    likeCount: {
+                        decrement: 1,
+                    },
+                },
+            }),
+        ]);
+
+        return {
+            liked: false,
+        };
+    },
+
+    async status(
+        userId: string,
+        wallpaperId: string
+    ) {
+        const like =
+            await prisma.wallpaperLike.findUnique({
+                where: {
+                    userId_wallpaperId: {
+                        userId,
+                        wallpaperId,
+                    },
+                },
+            });
+
+        return {
+            liked: !!like,
+        };
+    },
 };

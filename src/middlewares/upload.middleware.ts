@@ -1,42 +1,82 @@
-import multer, { FileFilterCallback } from "multer";
-import type { Request } from "express";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import crypto from "crypto";
 
-/**
- * Use memory storage because files will be uploaded directly to Cloudflare R2.
- * Do not use local disk storage on Render for permanent uploads.
- */
-const storage = multer.memoryStorage();
+// ===================================================
+// TEMP DIRECTORY
+// ===================================================
 
-const fileFilter = (
-  _req: Request,
-  file: Express.Multer.File,
-  cb: FileFilterCallback
+const TEMP_DIR = path.join(process.cwd(), "uploads", "temp");
+
+if (!fs.existsSync(TEMP_DIR)) {
+    fs.mkdirSync(TEMP_DIR, { recursive: true });
+}
+
+// ===================================================
+// IMAGE FILTER
+// ===================================================
+
+const imageFilter: multer.Options["fileFilter"] = (
+    _req,
+    file,
+    cb
 ) => {
-  const allowedTypes = [
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/webp",
-  ];
 
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-    return;
-  }
+    const allowed = [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/jpg",
+        "image/avif"
+    ];
 
-  cb(
-    new Error(
-      "Only JPG, JPEG, PNG and WEBP images are allowed"
-    )
-  );
+    if (allowed.includes(file.mimetype)) {
+        cb(null, true);
+    } else {
+        cb(new Error("Only image files are allowed."));
+    }
 };
 
+// ===================================================
+// STORAGE
+// ===================================================
+
+const storage = multer.diskStorage({
+
+    destination(_req, _file, cb) {
+
+        cb(null, TEMP_DIR);
+
+    },
+
+    filename(_req, file, cb) {
+
+        const ext = path.extname(file.originalname);
+
+        cb(
+            null,
+            crypto.randomUUID() + ext
+        );
+
+    }
+
+});
+
+// ===================================================
+// EXPORT
+// ===================================================
+
 export const upload = multer({
-  storage,
 
-  limits: {
-    fileSize: 10 * 1024 * 1024,
-  },
+    storage,
 
-  fileFilter,
+    fileFilter: imageFilter,
+
+    limits: {
+
+        fileSize: 25 * 1024 * 1024
+
+    }
+
 });

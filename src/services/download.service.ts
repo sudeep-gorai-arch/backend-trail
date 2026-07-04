@@ -1,548 +1,463 @@
-import { prisma } from '../config/prisma';
-import { ApiError } from '../utils/ApiError';
-
+import prisma from "../config/prisma";
+import { ApiError } from "../utils/ApiError";
 
 const FREE_DAILY_LIMIT = 5;
 
-
-const withCategory = {
+const wallpaperInclude = {
   category: {
     select: {
       id: true,
       name: true,
       slug: true,
-      icon: true,
+      thumbnailUrl: true,
     },
   },
 };
 
+interface RecordDownloadInput {
+  wallpaperId: string;
+  userId: string | null;
+  guestId: string | null;
+}
 
-export const downloadService = {
+/* ===========================================================
+   USER
+=========================================================== */
 
+const getUser = async (userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+  });
 
-  /**
-   * Download wallpaper
-   *
-   * Rules:
-   *
-   * Free user:
-   * - cannot download premium wallpapers
-   * - max 5 downloads/day
-   *
-   * Premium:
-   * - all wallpapers
-   * - unlimited downloads
-   */
+  if (!user) {
+    throw ApiError.notFound("User not found.");
+  }
 
-  async record(
-    userId: string,
-    wallpaperId: string
+  return user;
+};
+
+/* ===========================================================
+   GUEST
+=========================================================== */
+
+const getGuest = async (guestId: string) => {
+  let guest = await prisma.guest.findUnique({
+    where: {
+      id: guestId,
+    },
+  });
+
+  if (!guest) {
+    guest = await prisma.guest.create({
+      data: {
+        id: guestId,
+      },
+    });
+  }
+
+  return guest;
+};
+
+/* ===========================================================
+   WALLPAPER
+=========================================================== */
+
+const getWallpaper = async (wallpaperId: string) => {
+  const wallpaper = await prisma.wallpaper.findUnique({
+    where: {
+      id: wallpaperId,
+    },
+    include: wallpaperInclude,
+  });
+
+  if (!wallpaper) {
+    throw ApiError.notFound("Wallpaper not found.");
+  }
+
+  if (!wallpaper.active) {
+    throw ApiError.notFound("Wallpaper is inactive.");
+  }
+
+  if (wallpaper.status !== "READY") {
+    throw ApiError.badRequest(
+      "Wallpaper is still processing."
+    );
+  }
+
+  return wallpaper;
+};
+
+/* ===========================================================
+   PREMIUM
+=========================================================== */
+
+const isPremiumActive = (
+  premiumUntil: Date | null,
+  isPremium: boolean
+) => {
+  return (
+    isPremium &&
+    premiumUntil !== null &&
+    premiumUntil > new Date()
+  );
+};
+
+/* ===========================================================
+   DAILY LIMIT
+=========================================================== */
+
+const resetUserDailyLimit = async (
+  userId: string,
+  lastReset: Date | null
+) => {
+  const today = new Date().toDateString();
+
+  if (lastReset?.toDateString() !== today) {
+    await prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        dailyDownloadCount: 0,
+        lastDownloadReset: new Date(),
+      },
+    });
+
+    return 0;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+    select: {
+      dailyDownloadCount: true,
+    },
+  });
+
+  return user?.dailyDownloadCount ?? 0;
+};
+
+const resetGuestDailyLimit = async (
+  guestId: string,
+  lastReset: Date | null
+) => {
+  const today = new Date().toDateString();
+
+  if (lastReset?.toDateString() !== today) {
+    await prisma.guest.update({
+      where: {
+        id: guestId,
+      },
+      data: {
+        dailyDownloadCount: 0,
+        lastDownloadReset: new Date(),
+      },
+    });
+
+    return 0;
+  }
+
+  const guest = await prisma.guest.findUnique({
+    where: {
+      id: guestId,
+    },
+    select: {
+      dailyDownloadCount: true,
+    },
+  });
+
+  return guest?.dailyDownloadCount ?? 0;
+};
+
+/* ===========================================================
+   PERMISSION
+=========================================================== */
+
+const checkDownloadPermission = ({
+  isGuest,
+  premiumActive,
+  wallpaperPremium,
+  dailyCount,
+}: {
+  isGuest: boolean;
+  premiumActive: boolean;
+  wallpaperPremium: boolean;
+  dailyCount: number;
+}) => {
+  if (wallpaperPremium) {
+    if (isGuest) {
+      throw ApiError.forbidden(
+        "Please sign in to download premium wallpapers."
+      );
+    }
+
+    if (!premiumActive) {
+      throw ApiError.forbidden(
+        "Premium subscription required."
+      );
+    }
+  }
+
+  if (
+    !premiumActive &&
+    dailyCount >= FREE_DAILY_LIMIT
   ) {
+    throw ApiError.forbidden(
+      `Daily free download limit (${FREE_DAILY_LIMIT}) reached.`
+    );
+  }
+};
 
+/* ===========================================================
+   TRANSACTION
+=========================================================== */
 
-    const user =
-      await prisma.user.findUnique({
+const recordTransaction = async ({
+  userId,
+  guestId,
+  wallpaperId,
+  quality,
+  incrementUser,
+  incrementGuest,
+}: {
+  userId: string | null;
+  guestId: string | null;
+  wallpaperId: string;
+  quality: string;
+  incrementUser: boolean;
+  incrementGuest: boolean;
+}) => {
+  return prisma.$transaction(async (tx) => {
+    const download =
+      await tx.download.create({
+        data: {
+          userId,
+          guestId,
+          wallpaperId,
+          quality,
+        },
+      });
+
+    await tx.wallpaper.update({
+      where: {
+        id: wallpaperId,
+      },
+      data: {
+        downloadCount: {
+          increment: 1,
+        },
+      },
+    });
+
+    if (incrementUser && userId) {
+      await tx.user.update({
         where: {
           id: userId,
         },
+        data: {
+          dailyDownloadCount: {
+            increment: 1,
+          },
+        },
       });
-
-
-    if (!user) {
-
-      throw ApiError.notFound(
-        'User not found'
-      );
-
     }
 
+    if (incrementGuest && guestId) {
+      await tx.guest.update({
+        where: {
+          id: guestId,
+        },
+        data: {
+          dailyDownloadCount: {
+            increment: 1,
+          },
+        },
+      });
+    }
 
+    return download;
+  });
+};
+
+export const downloadService = {
+  async record({
+    wallpaperId,
+    userId,
+    guestId,
+  }: RecordDownloadInput) {
+    if (!userId && !guestId) {
+      throw ApiError.badRequest(
+        "Guest ID is required."
+      );
+    }
 
     const wallpaper =
-      await prisma.wallpaper.findUnique({
-        where: {
-          id: wallpaperId,
-        },
-      });
+      await getWallpaper(wallpaperId);
 
-
-
-    if (!wallpaper) {
-
-      throw ApiError.notFound(
-        `Wallpaper ${wallpaperId} not found`
-      );
-
-    }
-
-
+    let premiumActive = false;
+    let dailyCount = 0;
+    let incrementUser = false;
+    let incrementGuest = false;
 
     /*
-    -------------------------------
-    CHECK PREMIUM STATUS
-    -------------------------------
+    ------------------------------------
+    LOGGED IN USER
+    ------------------------------------
     */
 
+    if (userId) {
+      const user =
+        await getUser(userId);
 
-    const premiumActive =
-
-      user.isPremium &&
-
-      user.premiumUntil &&
-
-      user.premiumUntil > new Date();
-
-
-
-    /*
-    -------------------------------
-    BLOCK PREMIUM WALLPAPER
-    -------------------------------
-    */
-
-
-    if (
-      wallpaper.isPremium &&
-      !premiumActive
-    ) {
-
-
-      throw ApiError.forbidden(
-        'Premium subscription required'
-      );
-
-
-    }
-
-
-
-
-    /*
-    -------------------------------
-    RESET DAILY LIMIT
-    -------------------------------
-    */
-
-
-    let dailyCount =
-      user.dailyDownloadCount;
-
-
-
-    const today =
-      new Date()
-        .toDateString();
-
-
-
-    const lastReset =
-      user.lastDownloadReset
-        ?.toDateString();
-
-
-
-
-    if (
-      today !== lastReset
-    ) {
-
-
-      dailyCount = 0;
-
-
-      await prisma.user.update({
-
-        where: {
-          id: userId
-        },
-
-        data: {
-
-          dailyDownloadCount: 0,
-
-          lastDownloadReset:
-            new Date()
-
-        }
-
-      });
-
-
-    }
-
-
-
-
-
-    /*
-    -------------------------------
-    FREE DOWNLOAD LIMIT
-    -------------------------------
-    */
-
-
-    if (!premiumActive) {
-
-
-      if (
-        dailyCount >= FREE_DAILY_LIMIT
-      ) {
-
-
-        throw ApiError.forbidden(
-          'Daily free download limit reached'
+      premiumActive =
+        isPremiumActive(
+          user.premiumUntil,
+          user.isPremium
         );
 
-
-      }
-
-
-    }
-
-
-
-
-    /*
-    -------------------------------
-    TRANSACTION
-    -------------------------------
-    */
-
-
-    const result =
-      await prisma.$transaction(
-        async (tx) => {
-
-
-          const download =
-            await tx.download.create({
-
-              data: {
-
-                userId,
-
-                wallpaperId,
-
-                quality:
-                  wallpaper.quality,
-
-              },
-
-
-            });
-
-
-
-
-          await tx.wallpaper.update({
-
-            where: {
-              id: wallpaperId
-            },
-
-            data: {
-
-              downloadCount: {
-                increment: 1
-              }
-
-            }
-
-          });
-
-
-
-
-
-          if (!premiumActive) {
-
-
-            await tx.user.update({
-
-              where: {
-                id: userId
-              },
-
-              data: {
-
-                dailyDownloadCount: {
-                  increment: 1
-                }
-
-              }
-
-            });
-
-
-          }
-
-
-
-
-
-          return download;
-
-
-        }
-      );
-
-
-
-    /*
-    return URL to app
-    */
-
-
-    return {
-
-      ...result,
-
-
-      downloadUrl:
-        wallpaper.imageUrl,
-
-
-      quality:
-        wallpaper.quality,
-
-
-      isPremium:
-        wallpaper.isPremium
-
-    };
-
-
-
-  },
-
-
-
-  async recordPublic(
-    wallpaperId: string
-  ) {
-
-
-    const wallpaper =
-      await prisma.wallpaper.findUnique({
-
-        where: {
-          id: wallpaperId,
-        },
-
+      dailyCount =
+        await resetUserDailyLimit(
+          user.id,
+          user.lastDownloadReset
+        );
+
+      checkDownloadPermission({
+        isGuest: false,
+        premiumActive,
+        wallpaperPremium:
+          wallpaper.isPremium,
+        dailyCount,
       });
 
-
-
-    if (!wallpaper) {
-
-      throw ApiError.notFound(
-        `Wallpaper ${wallpaperId} not found`
-      );
-
+      incrementUser = !premiumActive;
     }
 
-
-
     /*
-    -------------------------------
-    BLOCK PREMIUM DOWNLOAD
-    -------------------------------
+    ------------------------------------
+    GUEST USER
+    ------------------------------------
     */
 
+    else {
+      const guest =
+        await getGuest(
+          guestId!
+        );
 
-    if (wallpaper.isPremium) {
+      dailyCount =
+        await resetGuestDailyLimit(
+          guest.id,
+          guest.lastDownloadReset
+        );
 
-      throw ApiError.forbidden(
-        'Premium wallpaper requires login'
-      );
+      checkDownloadPermission({
+        isGuest: true,
+        premiumActive: false,
+        wallpaperPremium:
+          wallpaper.isPremium,
+        dailyCount,
+      });
 
+      incrementGuest = true;
     }
 
-
-
-
-
     /*
-    -------------------------------
-    CREATE DOWNLOAD RECORD
-    WITHOUT USER
-    -------------------------------
+    ------------------------------------
+    TRANSACTION
+    ------------------------------------
     */
 
-
-    const result =
-      await prisma.$transaction(
-        async (tx) => {
-
-
-          const download =
-            await tx.download.create({
-
-              data: {
-
-                wallpaperId,
-
-                quality:
-                  wallpaper.quality,
-
-              },
-
-
-            });
-
-
-
-
-
-          await tx.wallpaper.update({
-
-            where: {
-              id: wallpaperId
-            },
-
-
-            data: {
-
-              downloadCount: {
-                increment: 1
-              }
-
-            },
-
-
-          });
-
-
-
-
-          return download;
-
-
-        }
-      );
-
-
-
+    const download =
+      await recordTransaction({
+        userId,
+        guestId,
+        wallpaperId:
+          wallpaper.id,
+        quality:
+          wallpaper.quality,
+        incrementUser,
+        incrementGuest,
+      });
 
     return {
-
-      ...result,
-
+      ...download,
 
       downloadUrl:
-        wallpaper.imageUrl,
-
+        wallpaper.originalPath,
 
       quality:
         wallpaper.quality,
 
-
       isPremium:
-        wallpaper.isPremium
-
+        wallpaper.isPremium,
     };
-
-
   },
 
-
-
-  /**
-   * User download history
-   */
-
+  /*
+  ------------------------------------
+  USER DOWNLOAD HISTORY
+  ------------------------------------
+  */
 
   async list(
     userId: string,
     limit: number,
     offset: number
   ) {
-
-
-    const [rows, total] =
+    const [
+      downloads,
+      total,
+    ] =
       await Promise.all([
-
-
         prisma.download.findMany({
-
           where: {
             userId,
           },
 
-
           include: {
-
             wallpaper: {
-
               include:
-                withCategory,
-
-            }
-
+                wallpaperInclude,
+            },
           },
-
 
           orderBy: {
-
-            createdAt: 'desc'
-
+            createdAt:
+              "desc",
           },
-
 
           skip: offset,
 
           take: limit,
-
-
         }),
 
-
-
-
         prisma.download.count({
-
           where: {
-            userId
-
-          }
-
-        })
-
-
-
+            userId,
+          },
+        }),
       ]);
 
-
-
-
-
     return {
-
-
       items:
-
-        rows.map(
-          (r) => ({
-
-            ...r.wallpaper,
-
+        downloads.map(
+          (
+            download
+          ) => ({
+            ...download.wallpaper,
 
             downloadedAt:
-              r.createdAt,
+              download.createdAt,
 
-
+            downloadQuality:
+              download.quality,
           })
         ),
 
-
-
       total,
-
-
     };
-
-
   },
-
-
 };

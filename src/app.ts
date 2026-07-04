@@ -108,7 +108,10 @@ app.use(
 );
 
 
-
+app.use(
+  "/storage",
+  express.static(path.join(process.cwd(), "storage"))
+);
 
 
 
@@ -118,14 +121,7 @@ app.use(
 // ===============================
 // Root info
 // ===============================
-app.get('/health', (_req, res) => {
-  res.status(200).json({
-    success: true,
-    message: 'VividWalls API is healthy',
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  });
-});
+
 
 app.get(
   "/",
@@ -167,7 +163,6 @@ app.use(
   "/api",
   routes
 );
-
 
 
 

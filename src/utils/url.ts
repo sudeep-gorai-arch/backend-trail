@@ -5,10 +5,21 @@ import { Request } from 'express';
  * Already-absolute (http/https) URLs are returned unchanged — relative paths
  * like "/videos/foo.mp4" get the current host prefixed.
  */
-export const absoluteUrl = (req: Request, path?: string | null): string => {
-  if (!path) return '';
-  if (/^https?:\/\//i.test(path)) return path;
-  const host = req.get('host') ?? 'localhost';
-  const normalized = path.startsWith('/') ? path : `/${path}`;
-  return `${req.protocol}://${host}${normalized}`;
+export const absoluteUrl = (
+  req: Request,
+  filePath?: string | null
+): string => {
+  if (!filePath) return "";
+
+  if (/^https?:\/\//i.test(filePath)) {
+    return filePath;
+  }
+
+  const host = req.get("host") ?? "localhost";
+
+  const normalized = filePath
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "");
+
+  return `${req.protocol}://${host}/storage/${normalized}`;
 };

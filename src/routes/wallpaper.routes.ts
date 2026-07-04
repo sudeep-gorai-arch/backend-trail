@@ -1,244 +1,283 @@
-import { Router } from 'express';
-import { z } from 'zod';
+import { Router } from "express";
 
-import { wallpaperController } from '../controllers/wallpaper.controller';
+import { wallpaperController } from "../controllers/wallpaper.controller";
 
-import { validate } from '../middlewares/validate.middleware';
-import { asyncHandler } from '../utils/asyncHandler';
+import { upload } from "../middlewares/upload.middleware";
+import { validate } from "../middlewares/validate.middleware";
 
-// your multer middleware
-import { upload } from '../middlewares/upload.middleware';
+import { asyncHandler } from "../utils/asyncHandler";
 
+import {
+  wallpaperIdParams,
+  wallpaperSlugParams,
+  wallpaperListQuery,
+  wallpaperSearchQuery,
+  createWallpaperBody,
+  updateWallpaperBody,
+} from "../validations/wallpaper.validation";
 
 const router = Router();
 
+// ======================================================
+// LIST
+// GET /api/wallpapers
+// ======================================================
 
-const listQuery = z.object({
-
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(50)
-    .default(10),
-
-  offset: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .default(0),
-
-  search: z
-    .string()
-    .trim()
-    .min(1)
-    .optional(),
-
-  category: z
-    .string()
-    .trim()
-    .min(1)
-    .optional(),
-
-});
-
-
-
-const limitQuery = z.object({
-
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(50)
-    .default(10),
-
-});
-
-
-
-const idParam = z.object({
-
-  id: z.string().uuid(),
-
-});
-
-
-
-
-
-// ======================================
-// CREATE SINGLE WALLPAPER
-// POST /api/wallpapers
-// ======================================
-
-router.post(
-  '/',
-  upload.single('image'),
-  asyncHandler(
-    wallpaperController.create
-  ),
+router.get(
+  "/",
+  validate({
+    query: wallpaperListQuery,
+  }),
+  asyncHandler(wallpaperController.list)
 );
 
-
-
-
-// ======================================
-// BATCH UPLOAD WALLPAPERS
-// POST /api/wallpapers/batch
-// ======================================
-
-router.post(
-  '/batch',
-  upload.array(
-    'images',
-    50
-  ),
-  asyncHandler(
-    wallpaperController.batchUpload
-  ),
-);
-
-
-
-
-
-// ======================================
+// ======================================================
 // FEATURED
 // GET /api/wallpapers/featured
-// ======================================
+// ======================================================
 
 router.get(
-  '/featured',
-
-  validate({
-    query: limitQuery
-  }),
-
-  asyncHandler(
-    wallpaperController.featured
-  ),
-
+  "/featured",
+  asyncHandler(wallpaperController.featured)
 );
 
-
-
-
-
-// ======================================
+// ======================================================
 // TRENDING
 // GET /api/wallpapers/trending
-// ======================================
+// ======================================================
 
 router.get(
-  '/trending',
-
-  validate({
-    query: limitQuery
-  }),
-
-  asyncHandler(
-    wallpaperController.trending
-  ),
-
+  "/trending",
+  asyncHandler(wallpaperController.trending)
 );
 
+// ======================================================
+// TOP WEEK
+// GET /api/wallpapers/top-week
+//
+// Important:
+// This route must stay above "/:id".
+// For now it uses trending logic as a safe fallback.
+// ======================================================
 
+router.get(
+  "/top-week",
+  asyncHandler(wallpaperController.trending)
+);
 
+// ======================================================
+// PREMIUM
+// GET /api/wallpapers/premium
+// ======================================================
 
+router.get(
+  "/premium",
+  asyncHandler(wallpaperController.premium)
+);
 
+// ======================================================
+// SEARCH
+// GET /api/wallpapers/search
+//
+// Important:
+// This route must stay above "/:id".
+// ======================================================
 
+router.get(
+  "/search",
+  validate({
+    query: wallpaperSearchQuery,
+  }),
+  asyncHandler(wallpaperController.search)
+);
 
-// ======================================
-// GET WALLPAPER BY ID
+// ======================================================
+// CATEGORY WALLPAPERS
+// GET /api/wallpapers/category/:slug
+//
+// Important:
+// This route must stay above "/:id".
+// ======================================================
+
+router.get(
+  "/category/:slug",
+  validate({
+    params: wallpaperSlugParams,
+    query: wallpaperListQuery,
+  }),
+  asyncHandler(wallpaperController.getByCategory)
+);
+
+// ======================================================
+// GET BY SLUG
+// GET /api/wallpapers/slug/:slug
+//
+// Important:
+// This route must stay above "/:id".
+// ======================================================
+
+router.get(
+  "/slug/:slug",
+  validate({
+    params: wallpaperSlugParams,
+  }),
+  asyncHandler(wallpaperController.getBySlug)
+);
+
+// ======================================================
+// RELATED WALLPAPERS
+// GET /api/wallpapers/:id/related
+// ======================================================
+
+router.get(
+  "/:id/related",
+  validate({
+    params: wallpaperIdParams,
+  }),
+  asyncHandler(wallpaperController.related)
+);
+
+// ======================================================
+// GET BY ID
 // GET /api/wallpapers/:id
-// ======================================
+//
+// Keep this below all static routes like:
+// /featured
+// /trending
+// /top-week
+// /premium
+// /search
+// /category/:slug
+// /slug/:slug
+// ======================================================
 
 router.get(
-  '/:id',
-
+  "/:id",
   validate({
-    params: idParam
+    params: wallpaperIdParams,
   }),
-
-  asyncHandler(
-    wallpaperController.getById
-  ),
-
+  asyncHandler(wallpaperController.getById)
 );
 
+// ======================================================
+// CREATE
+// POST /api/wallpapers
+// multipart/form-data
+// image => file
+// ======================================================
 
+router.post(
+  "/",
+  upload.single("image"),
+  validate({
+    body: createWallpaperBody,
+  }),
+  asyncHandler(wallpaperController.create)
+);
 
+// ======================================================
+// BATCH UPLOAD
+// POST /api/wallpapers/batch
+// multipart/form-data
+// images => files
+// ======================================================
 
+router.post(
+  "/batch",
+  upload.array("images", 50),
+  asyncHandler(wallpaperController.batchUpload)
+);
 
-
-// ======================================
-// UPDATE WALLPAPER
+// ======================================================
+// UPDATE
 // PUT /api/wallpapers/:id
-// ======================================
+// ======================================================
 
 router.put(
-  '/:id',
-
+  "/:id",
   validate({
-    params: idParam
+    params: wallpaperIdParams,
+    body: updateWallpaperBody,
   }),
-
-  asyncHandler(
-    wallpaperController.update
-  ),
-
+  asyncHandler(wallpaperController.update)
 );
 
-
-
-
-
-
-
-// ======================================
-// DELETE WALLPAPER
+// ======================================================
+// DELETE
 // DELETE /api/wallpapers/:id
-// ======================================
+// ======================================================
 
 router.delete(
-  '/:id',
-
+  "/:id",
   validate({
-    params: idParam
+    params: wallpaperIdParams,
   }),
-
-  asyncHandler(
-    wallpaperController.delete
-  ),
-
+  asyncHandler(wallpaperController.delete)
 );
 
+// ======================================================
+// TOGGLE FEATURED
+// PATCH /api/wallpapers/:id/featured
+// ======================================================
 
-
-
-
-
-
-// ======================================
-// LIST WALLPAPERS
-// GET /api/wallpapers
-// keep last
-// ======================================
-
-router.get(
-  '/',
-
+router.patch(
+  "/:id/featured",
   validate({
-    query: listQuery
+    params: wallpaperIdParams,
   }),
-
-  asyncHandler(
-    wallpaperController.list
-  ),
-
+  asyncHandler(wallpaperController.toggleFeatured)
 );
 
+// ======================================================
+// TOGGLE PREMIUM
+// PATCH /api/wallpapers/:id/premium
+// ======================================================
 
+router.patch(
+  "/:id/premium",
+  validate({
+    params: wallpaperIdParams,
+  }),
+  asyncHandler(wallpaperController.togglePremium)
+);
+
+// ======================================================
+// TOGGLE ACTIVE
+// PATCH /api/wallpapers/:id/active
+// ======================================================
+
+router.patch(
+  "/:id/active",
+  validate({
+    params: wallpaperIdParams,
+  }),
+  asyncHandler(wallpaperController.toggleActive)
+);
+
+// ======================================================
+// VIEW COUNT
+// POST /api/wallpapers/:id/view
+// ======================================================
+
+router.post(
+  "/:id/view",
+  validate({
+    params: wallpaperIdParams,
+  }),
+  asyncHandler(wallpaperController.incrementViews)
+);
+
+// ======================================================
+// DOWNLOAD COUNT
+// POST /api/wallpapers/:id/download
+// ======================================================
+
+router.post(
+  "/:id/download",
+  validate({
+    params: wallpaperIdParams,
+  }),
+  asyncHandler(wallpaperController.incrementDownloads)
+);
 
 export default router;

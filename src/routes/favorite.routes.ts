@@ -1,31 +1,119 @@
-import { Router } from 'express';
-import { z } from 'zod';
-import { favoriteController } from '../controllers/favorite.controller';
-import { authenticate } from '../middlewares/auth.middleware';
-import { validate } from '../middlewares/validate.middleware';
-import { asyncHandler } from '../utils/asyncHandler';
+import { Router } from "express";
+
+import { favoriteController } from "../controllers/favorite.controller";
+
+import { authenticate } from "../middlewares/auth.middleware";
+
+import { validate } from "../middlewares/validate.middleware";
+
+import { asyncHandler } from "../utils/asyncHandler";
+
+import {
+  favoriteListQuery,
+  addFavoriteBody,
+  favoriteParams,
+} from "../validations/favorite.validation";
 
 const router = Router();
 
-// Every favorites route requires a logged-in user.
+// ======================================
+// AUTH REQUIRED
+// ======================================
+
 router.use(authenticate);
 
-const pageQuery = z.object({
-  limit: z.coerce.number().int().min(1).max(50).default(20),
-  offset: z.coerce.number().int().min(0).default(0),
-});
-const addBody = z.object({ wallpaperId: z.string().uuid() });
-const wallpaperParam = z.object({ wallpaperId: z.string().uuid() });
-
+// ======================================
+// LIST FAVORITES
 // GET /api/favorites
-router.get('/', validate({ query: pageQuery }), asyncHandler(favoriteController.list));
+// ======================================
+
+router.get(
+  "/",
+  validate({
+    query: favoriteListQuery,
+  }),
+  asyncHandler(favoriteController.list)
+);
+
+// ======================================
+// ADD FAVORITE
 // POST /api/favorites
-router.post('/', validate({ body: addBody }), asyncHandler(favoriteController.add));
+// Body: { wallpaperId }
+// ======================================
+
+router.post(
+  "/",
+  validate({
+    body: addFavoriteBody,
+  }),
+  asyncHandler(favoriteController.add)
+);
+
+// ======================================
+// FAVORITE STATUS
+// GET /api/favorites/status/:wallpaperId
+// Used by mobile app when opening wallpaper details
+// ======================================
+
+router.get(
+  "/status/:wallpaperId",
+  validate({
+    params: favoriteParams,
+  }),
+  asyncHandler(favoriteController.status)
+);
+
+// ======================================
+// TOGGLE FAVORITE
+// POST /api/favorites/toggle/:wallpaperId
+// Optional endpoint for one-click add/remove
+// ======================================
+
+router.post(
+  "/toggle/:wallpaperId",
+  validate({
+    params: favoriteParams,
+  }),
+  asyncHandler(favoriteController.toggle)
+);
+
+// ======================================
+// BACKWARD COMPATIBILITY
+// GET /api/favorites/:wallpaperId/status
+// ======================================
+
+router.get(
+  "/:wallpaperId/status",
+  validate({
+    params: favoriteParams,
+  }),
+  asyncHandler(favoriteController.status)
+);
+
+// ======================================
+// BACKWARD COMPATIBILITY
+// POST /api/favorites/:wallpaperId/toggle
+// ======================================
+
+router.post(
+  "/:wallpaperId/toggle",
+  validate({
+    params: favoriteParams,
+  }),
+  asyncHandler(favoriteController.toggle)
+);
+
+// ======================================
+// REMOVE FAVORITE
 // DELETE /api/favorites/:wallpaperId
+// ======================================
+
 router.delete(
-  '/:wallpaperId',
-  validate({ params: wallpaperParam }),
-  asyncHandler(favoriteController.remove),
+  "/:wallpaperId",
+  validate({
+    params: favoriteParams,
+  }),
+  asyncHandler(favoriteController.remove)
 );
 
 export default router;
