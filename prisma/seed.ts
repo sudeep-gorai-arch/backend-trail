@@ -13,101 +13,54 @@ const prisma = new PrismaClient({
   adapter,
 });
 
-const avatarImg = (file: string) =>
-  `/uploads/wallpapers/users/${file}.webp`;
-
 async function main() {
-  console.log("🌱 Starting user seed...");
-
-  // ==========================================
-  // DELETE DATA
-  // Keep only fresh user table entries
-  // ==========================================
-
-  await prisma.subscription.deleteMany();
-
-  await prisma.wallpaperVariant.deleteMany();
-
-  await prisma.wallpaperTag.deleteMany();
-
-  await prisma.wallpaperLike.deleteMany();
-
-  await prisma.download.deleteMany();
-
-  await prisma.favorite.deleteMany();
-
-  await prisma.wallpaper.deleteMany();
-
-  await prisma.tag.deleteMany();
-
-  await prisma.category.deleteMany();
+  console.log("🌱 Starting user and role seed...");
 
   await prisma.userSession.deleteMany();
-
   await prisma.user.deleteMany();
-
   await prisma.role.deleteMany();
 
-  console.log("✅ Old data removed");
+  const adminRole = await prisma.role.create({
+    data: {
+      name: "ADMIN",
+      description: "System Administrator",
+    },
+  });
 
-  // ==========================================
-  // USERS ONLY
-  // ==========================================
+  const userRole = await prisma.role.create({
+    data: {
+      name: "USER",
+      description: "Application User",
+    },
+  });
 
-  const admin = await prisma.user.create({
+  await prisma.user.create({
     data: {
       email: "admin@vividwalls.com",
-
       username: "Administrator",
-
       passwordHash: await bcrypt.hash("Admin123", 10),
-
-      avatarUrl: avatarImg("admin"),
-
       bio: "Application Administrator",
-
       authProvider: "LOCAL",
-
       isPremium: true,
-
-      premiumUntil: new Date(
-        Date.now() + 1000 * 60 * 60 * 24 * 365
-      ),
+      premiumUntil: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365),
+      roleId: adminRole.id,
     },
   });
 
-  const demoUser = await prisma.user.create({
+  await prisma.user.create({
     data: {
       email: "demo@vividwalls.com",
-
       username: "Demo User",
-
       passwordHash: await bcrypt.hash("Password123", 10),
-
-      avatarUrl: avatarImg("demo"),
-
       bio: "Wallpaper Lover",
-
       authProvider: "LOCAL",
-
-      isPremium: true,
-
-      premiumUntil: new Date(
-        Date.now() + 1000 * 60 * 60 * 24 * 365
-      ),
+      isPremium: false,
+      roleId: userRole.id,
     },
   });
 
-  console.log("✅ Users created");
-
-  console.log("");
-  console.log("=====================================");
-  console.log("🌱 Database Seeded Successfully");
-  console.log("=====================================");
-  console.log(`Users : 2`);
-  console.log(`Admin : ${admin.email}`);
-  console.log(`Demo  : ${demoUser.email}`);
-  console.log("=====================================");
+  console.log("✅ Roles created: 2");
+  console.log("✅ Users created: 2");
 }
 
 main()

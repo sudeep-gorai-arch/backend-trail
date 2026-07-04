@@ -1,23 +1,35 @@
-import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { randomUUID } from 'crypto';
-import path from 'path';
-import { r2 } from '../config/r2';
-import { env } from '../config/env';
+import { DeleteObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { randomUUID } from "crypto";
+import path from "path";
+
+import { r2 } from "../config/r2";
+import { env } from "../config/env";
 
 const getSafeExtension = (filename: string) => {
   const ext = path.extname(filename).toLowerCase();
 
-  if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
+  if ([".jpg", ".jpeg", ".png", ".webp", ".avif"].includes(ext)) {
     return ext;
   }
 
-  return '.jpg';
+  return ".jpg";
+};
+
+const getPublicUrl = (key: string) => {
+  const baseUrl = env.R2_PUBLIC_URL.replace(/\/$/, "");
+  return `${baseUrl}/${key}`;
 };
 
 export const uploadImageToR2 = async (
   file: Express.Multer.File,
-  folder = 'wallpapers'
+  folder = "wallpapers"
 ) => {
+  if (!file.buffer) {
+    throw new Error(
+      "File buffer is missing. Make sure multer is using memoryStorage(), not diskStorage()."
+    );
+  }
+
   const ext = getSafeExtension(file.originalname);
   const key = `${folder}/${randomUUID()}${ext}`;
 
@@ -27,13 +39,13 @@ export const uploadImageToR2 = async (
       Key: key,
       Body: file.buffer,
       ContentType: file.mimetype,
-      CacheControl: 'public, max-age=31536000, immutable',
+      CacheControl: "public, max-age=31536000, immutable",
     })
   );
 
   return {
     key,
-    url: `${env.R2_PUBLIC_URL}/${key}`,
+    url: getPublicUrl(key),
   };
 };
 
