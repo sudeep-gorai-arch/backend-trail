@@ -5,6 +5,12 @@ const FREE_DAILY_LIMIT = 5;
 
 type AnyObj = Record<string, any>;
 
+type RecordDownloadInput = {
+  wallpaperId: string;
+  userId?: string | null;
+  guestId?: string | null;
+};
+
 const wallpaperInclude = {
   category: {
     select: {
@@ -56,6 +62,24 @@ const getUser = async (userId: string) => {
   return user;
 };
 
+const getGuest = async (guestId: string) => {
+  let guest = await prisma.guest.findUnique({
+    where: {
+      id: guestId,
+    },
+  });
+
+  if (!guest) {
+    guest = await prisma.guest.create({
+      data: {
+        id: guestId,
+      },
+    });
+  }
+
+  return guest;
+};
+
 const getWallpaper = async (wallpaperId: string): Promise<AnyObj> => {
   const wallpaper = await prisma.wallpaper.findUnique({
     where: {
@@ -73,10 +97,22 @@ const getWallpaper = async (wallpaperId: string): Promise<AnyObj> => {
     throw ApiError.notFound("Wallpaper is inactive.");
   }
 
-  return normalizeWallpaperMedia(wallpaper as AnyObj);
+  const wallpaperRecord = wallpaper as AnyObj;
+
+  if (
+    wallpaperRecord.status &&
+    wallpaperRecord.status !== "READY"
+  ) {
+    throw ApiError.badRequest("Wallpaper is still processing.");
+  }
+
+  return normalizeWallpaperMedia(wallpaperRecord);
 };
 
-const isPremiumActive = (premiumUntil: Date | null, isPremium: boolean) => {
+const isPremiumActive = (
+  premiumUntil: Date | null,
+  isPremium: boolean,
+) => {
   return Boolean(
     isPremium &&
       premiumUntil !== null &&
@@ -118,21 +154,90 @@ const resetUserDailyLimit = async (
   return user?.dailyDownloadCount ?? 0;
 };
 
+const resetGuestDailyLimit = async (
+  guestId: string,
+  lastReset: Date | null,
+) => {
+  const today = new Date().toDateString();
+
+  if (lastReset?.toDateString() !== today) {
+    await prisma.guest.update({
+      where: {
+        id: guestId,
+      },
+
+      data: {
+        dailyDownloadCount: 0,
+        lastDownloadReset: new Date(),
+      },
+    });
+
+    return 0;
+  }
+
+  const guest = await prisma.guest.findUnique({
+    where: {
+      id: guestId,
+    },
+
+    select: {
+      dailyDownloadCount: true,
+    },
+  });
+
+  return guest?.dailyDownloadCount ?? 0;
+};
+
+const checkDownloadPermission = ({
+  isGuest,
+  premiumActive,
+  wallpaperPremium,
+  dailyCount,
+}: {
+  isGuest: boolean;
+  premiumActive: boolean;
+  wallpaperPremium: boolean;
+  dailyCount: number;
+}) => {
+  if (wallpaperPremium) {
+    if (isGuest) {
+      throw ApiError.forbidden(
+        "Please sign in to download premium wallpapers.",
+      );
+    }
+
+    if (!premiumActive) {
+      throw ApiError.forbidden("Premium subscription required.");
+    }
+  }
+
+  if (!premiumActive && dailyCount >= FREE_DAILY_LIMIT) {
+    throw ApiError.forbidden(
+      `Daily free download limit (${FREE_DAILY_LIMIT}) reached.`,
+    );
+  }
+};
+
 const createDownloadRecord = async ({
   userId,
+  guestId,
   wallpaperId,
   quality,
   incrementUserDailyCount,
+  incrementGuestDailyCount,
 }: {
   userId: string | null;
+  guestId: string | null;
   wallpaperId: string;
   quality: string;
   incrementUserDailyCount: boolean;
+  incrementGuestDailyCount: boolean;
 }) => {
   return prisma.$transaction(async (tx) => {
     const download = await tx.download.create({
       data: {
         userId,
+        guestId,
         wallpaperId,
         quality,
       },
@@ -164,26 +269,58 @@ const createDownloadRecord = async ({
       });
     }
 
+    if (guestId && incrementGuestDailyCount) {
+      await tx.guest.update({
+        where: {
+          id: guestId,
+        },
+
+        data: {
+          dailyDownloadCount: {
+            increment: 1,
+          },
+        },
+      });
+    }
+
     return download;
   });
 };
 
 const buildDownloadResponse = (download: AnyObj, wallpaper: AnyObj) => {
-  const imageUrl = wallpaper.imageUrl ?? null;
-  const thumbnailUrl = wallpaper.thumbnailUrl ?? imageUrl ?? null;
+  const imageUrl =
+    wallpaper.imageUrl ??
+    null;
+
+  const thumbnailUrl =
+    wallpaper.thumbnailUrl ??
+    imageUrl ??
+    null;
+
+  const downloadUrl =
+    wallpaper.originalPath ??
+    wallpaper.original_path ??
+    wallpaper.downloadUrl ??
+    wallpaper.download_url ??
+    imageUrl ??
+    thumbnailUrl ??
+    null;
 
   return {
     ...download,
 
     wallpaperId: wallpaper.id,
 
-    downloadUrl: imageUrl ?? thumbnailUrl,
+    downloadUrl,
 
     imageUrl,
 
     thumbnailUrl,
 
-    quality: wallpaper.quality ?? download.quality ?? "4K",
+    quality:
+      wallpaper.quality ??
+      download.quality ??
+      "4K",
 
     isPremium: Boolean(wallpaper.isPremium),
 
@@ -203,74 +340,157 @@ const buildDownloadResponse = (download: AnyObj, wallpaper: AnyObj) => {
 
 export const downloadService = {
   /*
-  ------------------------------------
-  LOGGED-IN USER DOWNLOAD
-  Controller calls:
-  downloadService.record(req.user!.id, wallpaperId)
-  ------------------------------------
+  Supports both:
+  1. downloadService.record({ userId, guestId, wallpaperId })
+  2. downloadService.record(userId, wallpaperId)
   */
 
-  async record(userId: string, wallpaperId: string) {
-    const user = await getUser(userId);
-    const wallpaper = await getWallpaper(wallpaperId);
+  async record(
+    input: RecordDownloadInput | string,
+    wallpaperIdArg?: string,
+  ) {
+    const userId =
+      typeof input === "string"
+        ? input
+        : input.userId ?? null;
 
-    const premiumActive = isPremiumActive(user.premiumUntil, user.isPremium);
+    const guestId =
+      typeof input === "string"
+        ? null
+        : input.guestId ?? null;
 
-    if (wallpaper.isPremium && !premiumActive) {
-      throw ApiError.forbidden("Premium subscription required.");
+    const wallpaperId =
+      typeof input === "string"
+        ? wallpaperIdArg
+        : input.wallpaperId;
+
+    if (!wallpaperId) {
+      throw ApiError.badRequest("Wallpaper ID is required.");
     }
 
-    const dailyCount = await resetUserDailyLimit(
-      user.id,
-      user.lastDownloadReset,
-    );
+    if (!userId && !guestId) {
+      throw ApiError.badRequest("Guest ID is required.");
+    }
 
-    if (!premiumActive && dailyCount >= FREE_DAILY_LIMIT) {
-      throw ApiError.forbidden(
-        `Daily free download limit (${FREE_DAILY_LIMIT}) reached.`,
+    const wallpaper = await getWallpaper(wallpaperId);
+
+    let premiumActive = false;
+    let dailyCount = 0;
+    let incrementUserDailyCount = false;
+    let incrementGuestDailyCount = false;
+
+    if (userId) {
+      const user = await getUser(userId);
+
+      premiumActive = isPremiumActive(
+        user.premiumUntil,
+        user.isPremium,
       );
+
+      dailyCount = await resetUserDailyLimit(
+        user.id,
+        user.lastDownloadReset,
+      );
+
+      checkDownloadPermission({
+        isGuest: false,
+        premiumActive,
+        wallpaperPremium: Boolean(wallpaper.isPremium),
+        dailyCount,
+      });
+
+      incrementUserDailyCount = !premiumActive;
+    } else {
+      const guest = await getGuest(guestId!);
+
+      dailyCount = await resetGuestDailyLimit(
+        guest.id,
+        guest.lastDownloadReset,
+      );
+
+      checkDownloadPermission({
+        isGuest: true,
+        premiumActive: false,
+        wallpaperPremium: Boolean(wallpaper.isPremium),
+        dailyCount,
+      });
+
+      incrementGuestDailyCount = true;
     }
 
     const download = await createDownloadRecord({
-      userId: user.id,
+      userId,
+      guestId,
       wallpaperId: String(wallpaper.id),
       quality: String(wallpaper.quality ?? "4K"),
-      incrementUserDailyCount: !premiumActive,
+      incrementUserDailyCount,
+      incrementGuestDailyCount,
     });
 
     return buildDownloadResponse(download as AnyObj, wallpaper);
   },
 
   /*
-  ------------------------------------
-  GUEST / PUBLIC DOWNLOAD
-  Controller calls:
-  downloadService.recordPublic(wallpaperId)
-  ------------------------------------
+  Public download support.
+  Supports both:
+  1. downloadService.recordPublic(wallpaperId)
+  2. downloadService.recordPublic({ wallpaperId, guestId })
   */
 
-  async recordPublic(wallpaperId: string) {
+  async recordPublic(
+    input: string | { wallpaperId: string; guestId?: string | null },
+  ) {
+    const wallpaperId =
+      typeof input === "string"
+        ? input
+        : input.wallpaperId;
+
+    const guestId =
+      typeof input === "string"
+        ? null
+        : input.guestId ?? null;
+
+    if (!wallpaperId) {
+      throw ApiError.badRequest("Wallpaper ID is required.");
+    }
+
     const wallpaper = await getWallpaper(wallpaperId);
 
     if (wallpaper.isPremium) {
       throw ApiError.forbidden("Premium wallpaper requires login.");
     }
 
+    let incrementGuestDailyCount = false;
+
+    if (guestId) {
+      const guest = await getGuest(guestId);
+
+      const dailyCount = await resetGuestDailyLimit(
+        guest.id,
+        guest.lastDownloadReset,
+      );
+
+      checkDownloadPermission({
+        isGuest: true,
+        premiumActive: false,
+        wallpaperPremium: Boolean(wallpaper.isPremium),
+        dailyCount,
+      });
+
+      incrementGuestDailyCount = true;
+    }
+
     const download = await createDownloadRecord({
       userId: null,
+      guestId,
       wallpaperId: String(wallpaper.id),
       quality: String(wallpaper.quality ?? "4K"),
       incrementUserDailyCount: false,
+      incrementGuestDailyCount,
     });
 
     return buildDownloadResponse(download as AnyObj, wallpaper);
   },
-
-  /*
-  ------------------------------------
-  USER DOWNLOAD HISTORY
-  ------------------------------------
-  */
 
   async list(userId: string, limit: number, offset: number) {
     const [downloads, total] = await Promise.all([
@@ -303,7 +523,9 @@ export const downloadService = {
 
     return {
       items: downloads.map((download) => {
-        const wallpaper = normalizeWallpaperMedia(download.wallpaper as AnyObj);
+        const wallpaper = normalizeWallpaperMedia(
+          download.wallpaper as AnyObj,
+        );
 
         return {
           ...wallpaper,
