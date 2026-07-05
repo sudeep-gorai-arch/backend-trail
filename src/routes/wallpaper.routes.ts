@@ -57,12 +57,16 @@ router.get(
 //
 // Important:
 // This route must stay above "/:id".
-// For now it uses trending logic as a safe fallback.
+// It returns the top downloaded wallpapers from the last 7 days.
+// Optional query params:
+// limit=10
+// category=abstract
+// categorySlug=abstract
 // ======================================================
 
 router.get(
   "/top-week",
-  asyncHandler(wallpaperController.trending)
+  asyncHandler(wallpaperController.topWeek)
 );
 
 // ======================================================

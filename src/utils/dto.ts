@@ -128,6 +128,13 @@ export const toWallpaperDTO = (req: Request, w: WallpaperRow) => {
   const imageUrl = makeUrl(req, rawImageUrl || rawThumbnailUrl);
   const thumbnailUrl = makeUrl(req, rawThumbnailUrl || rawImageUrl);
 
+  const downloadsThisWeek =
+    w.downloadsThisWeek ??
+    w.weeklyDownloads ??
+    w.downloads_this_week ??
+    w.week_downloads ??
+    null;
+
   return {
     id: w.id,
 
@@ -159,6 +166,10 @@ export const toWallpaperDTO = (req: Request, w: WallpaperRow) => {
       w._count?.downloads ??
       w.downloads ??
       0,
+
+    downloadsThisWeek: downloadsThisWeek ?? 0,
+
+    weeklyDownloads: downloadsThisWeek ?? 0,
 
     isFavorite: w.isFavorite ?? false,
 

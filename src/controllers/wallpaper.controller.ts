@@ -191,6 +191,37 @@ export const wallpaperController = {
   },
 
   // ======================================================
+  // TOP WEEK
+  // ======================================================
+
+  async topWeek(
+    req: Request,
+    res: Response
+  ) {
+    const limit =
+      parseNumberQuery(req.query.limit, 10);
+
+    const category =
+      (req.query.categorySlug || req.query.category) as string | undefined;
+
+    const wallpapers =
+      await wallpaperService.getTopWeek({
+        limit,
+        category,
+      });
+
+    response.success(
+      res,
+      wallpapers.map((wallpaper) =>
+        toWallpaperDTO(
+          req,
+          wallpaper
+        )
+      )
+    );
+  },
+
+  // ======================================================
   // PREMIUM
   // ======================================================
 

@@ -36,6 +36,12 @@ export interface ListWallpaperParams {
   sort?: "latest" | "popular" | "downloads" | "likes" | "featured";
 }
 
+export interface TopWeekWallpaperParams {
+  limit?: number;
+
+  category?: string;
+}
+
 export interface CreateWallpaperInput {
   title: string;
 
@@ -732,6 +738,117 @@ export const wallpaperService = {
     });
 
     return wallpapers.map(mapWallpaper);
+  },
+
+  async getTopWeek({
+    limit = 10,
+    category,
+  }: TopWeekWallpaperParams = {}) {
+    const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 50);
+
+    const selectedCategory = String(category || "").trim();
+
+    const since = new Date();
+    since.setDate(since.getDate() - 7);
+
+    const wallpaperWhere: Prisma.WallpaperWhereInput = {
+      active: true,
+
+      deletedAt: null,
+
+      status: "READY",
+    };
+
+    if (selectedCategory && selectedCategory.toLowerCase() !== "all") {
+      wallpaperWhere.category = {
+        OR: [
+          {
+            slug: selectedCategory,
+          },
+          {
+            name: {
+              equals: selectedCategory,
+              mode: "insensitive",
+            },
+          },
+        ],
+      };
+    }
+
+    const downloadGroups = await prisma.download.groupBy({
+      by: ["wallpaperId"],
+
+      where: {
+        createdAt: {
+          gte: since,
+        },
+
+        wallpaper: {
+          is: wallpaperWhere,
+        },
+      },
+
+      _count: {
+        wallpaperId: true,
+      },
+    });
+
+    const topDownloadGroups = downloadGroups
+      .sort((a, b) => b._count.wallpaperId - a._count.wallpaperId)
+      .slice(0, safeLimit);
+
+    if (!topDownloadGroups.length) {
+      return [];
+    }
+
+    const weeklyDownloadCountByWallpaperId = new Map(
+      topDownloadGroups.map((item) => [
+        item.wallpaperId,
+        item._count.wallpaperId,
+      ])
+    );
+
+    const wallpapers = await prisma.wallpaper.findMany({
+      where: {
+        id: {
+          in: topDownloadGroups.map((item) => item.wallpaperId),
+        },
+      },
+
+      include: wallpaperInclude,
+    });
+
+    const wallpaperById = new Map(
+      wallpapers.map((wallpaper) => [wallpaper.id, wallpaper])
+    );
+
+    const topWallpapers: Array<
+      ReturnType<typeof mapWallpaper> & {
+        downloadsThisWeek: number;
+        weeklyDownloads: number;
+      }
+    > = [];
+
+    for (const item of topDownloadGroups) {
+      const wallpaper = wallpaperById.get(item.wallpaperId);
+
+      if (!wallpaper) {
+        continue;
+      }
+
+      const weeklyDownloads =
+        weeklyDownloadCountByWallpaperId.get(item.wallpaperId) || 0;
+
+      topWallpapers.push({
+        ...mapWallpaper(wallpaper),
+
+        downloadsThisWeek: weeklyDownloads,
+
+        weeklyDownloads,
+      });
+    }
+
+    return topWallpapers;
   },
 
   async getPremium(limit = 20) {
