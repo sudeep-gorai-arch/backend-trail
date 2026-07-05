@@ -1,6 +1,8 @@
 import prisma from '../config/prisma';
 import { ApiError } from '../utils/ApiError';
 
+type AnyObj = Record<string, any>;
+
 const wallpaperInclude = {
   category: {
     select: {
@@ -14,11 +16,51 @@ const wallpaperInclude = {
   _count: {
     select: {
       favorites: true,
+      downloads: true,
     },
   },
 };
 
-const getWallpaper = async (wallpaperId: string) => {
+const normalizeWallpaperMedia = (wallpaper: AnyObj): AnyObj => {
+  const imageUrl =
+    wallpaper.imageUrl ??
+    wallpaper.image_url ??
+    wallpaper.displayUrl ??
+    wallpaper.display_url ??
+    wallpaper.displayPath ??
+    wallpaper.display_path ??
+    wallpaper.originalUrl ??
+    wallpaper.original_url ??
+    wallpaper.originalPath ??
+    wallpaper.original_path ??
+    wallpaper.downloadUrl ??
+    wallpaper.download_url ??
+    null;
+
+  const thumbnailUrl =
+    wallpaper.thumbnailUrl ??
+    wallpaper.thumbnail_url ??
+    wallpaper.thumbnailPath ??
+    wallpaper.thumbnail_path ??
+    wallpaper.thumbUrl ??
+    wallpaper.thumb_url ??
+    wallpaper.previewUrl ??
+    wallpaper.preview_url ??
+    wallpaper.displayUrl ??
+    wallpaper.display_url ??
+    wallpaper.displayPath ??
+    wallpaper.display_path ??
+    imageUrl ??
+    null;
+
+  return {
+    ...wallpaper,
+    imageUrl,
+    thumbnailUrl,
+  };
+};
+
+const getWallpaper = async (wallpaperId: string): Promise<AnyObj> => {
   const wallpaper = await prisma.wallpaper.findUnique({
     where: {
       id: wallpaperId,
@@ -35,7 +77,7 @@ const getWallpaper = async (wallpaperId: string) => {
     throw ApiError.notFound('Wallpaper is inactive.');
   }
 
-  return wallpaper;
+  return normalizeWallpaperMedia(wallpaper as AnyObj);
 };
 
 const getFavoriteCount = async (wallpaperId: string) => {
@@ -96,15 +138,29 @@ export const favoriteService = {
     ]);
 
     return {
-      items: favorites.map(favorite => ({
-        ...favorite.wallpaper,
+      items: favorites.map((favorite) => {
+        const wallpaper = normalizeWallpaperMedia(favorite.wallpaper as AnyObj);
 
-        isFavorite: true,
+        return {
+          ...wallpaper,
 
-        favoriteCount: favorite.wallpaper._count?.favorites ?? 0,
+          isFavorite: true,
 
-        favoritedAt: favorite.createdAt,
-      })),
+          favoriteCount:
+            wallpaper.favoriteCount ??
+            wallpaper.favorite_count ??
+            wallpaper._count?.favorites ??
+            0,
+
+          downloadCount:
+            wallpaper.downloadCount ??
+            wallpaper.download_count ??
+            wallpaper._count?.downloads ??
+            0,
+
+          favoritedAt: favorite.createdAt,
+        };
+      }),
 
       total,
     };
