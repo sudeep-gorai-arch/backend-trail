@@ -16,10 +16,8 @@ router.use(authenticate);
 // ==============================
 
 router.get(
-    "/me",
-    asyncHandler(
-        userController.me
-    )
+  "/me",
+  asyncHandler(userController.me)
 );
 
 // ==============================
@@ -28,22 +26,18 @@ router.get(
 // ==============================
 
 router.put(
-    "/me",
-    asyncHandler(
-        userController.updateProfile
-    )
+  "/me",
+  asyncHandler(userController.updateProfile)
 );
 
 // ==============================
-// DELETE ACCOUNT
+// DELETE ACCOUNT AND DATA
 // DELETE /api/users/me
 // ==============================
 
 router.delete(
-    "/me",
-    asyncHandler(
-        userController.deleteAccount
-    )
+  "/me",
+  asyncHandler(userController.deleteAccount)
 );
 
 export default router;

@@ -31,7 +31,6 @@ const getUserOrThrow = async (userId: string) => {
 };
 
 export const userService = {
-
   async me(userId: string) {
     const user =
       await getUserOrThrow(userId);
@@ -106,14 +105,31 @@ export const userService = {
   async deleteAccount(userId: string) {
     await getUserOrThrow(userId);
 
-    await prisma.user.delete({
-      where: {
-        id: userId,
-      },
-    });
+    const result =
+      await prisma.$transaction(
+        async (tx) => {
+          const deletedDownloads =
+            await tx.download.deleteMany({
+              where: {
+                userId,
+              },
+            });
 
-    return {
-      deleted: true,
-    };
+          await tx.user.delete({
+            where: {
+              id: userId,
+            },
+          });
+
+          return {
+            deleted: true,
+
+            deletedDownloads:
+              deletedDownloads.count,
+          };
+        }
+      );
+
+    return result;
   },
 };

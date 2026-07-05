@@ -24,7 +24,6 @@ type SubscriptionPlanCode = 'FREE' | PaidSubscriptionPlan;
 
 const PAID_PLANS: PaidSubscriptionPlan[] = [
   'MONTHLY',
-  'QUARTERLY',
   'YEARLY',
   'LIFETIME',
 ];
@@ -48,10 +47,6 @@ const getEndDate = (
   switch (plan) {
     case 'MONTHLY':
       end.setMonth(end.getMonth() + 1);
-      break;
-
-    case 'QUARTERLY':
-      end.setMonth(end.getMonth() + 3);
       break;
 
     case 'YEARLY':
