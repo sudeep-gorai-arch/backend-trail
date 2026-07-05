@@ -33,16 +33,10 @@ const normalizeWallpaperMedia = (wallpaper: AnyObj): AnyObj => {
   const imageUrl =
     wallpaper.imageUrl ??
     wallpaper.image_url ??
-    wallpaper.displayUrl ??
-    wallpaper.display_url ??
     wallpaper.displayPath ??
     wallpaper.display_path ??
-    wallpaper.originalUrl ??
-    wallpaper.original_url ??
     wallpaper.originalPath ??
     wallpaper.original_path ??
-    wallpaper.downloadUrl ??
-    wallpaper.download_url ??
     null;
 
   const thumbnailUrl =
@@ -50,12 +44,6 @@ const normalizeWallpaperMedia = (wallpaper: AnyObj): AnyObj => {
     wallpaper.thumbnail_url ??
     wallpaper.thumbnailPath ??
     wallpaper.thumbnail_path ??
-    wallpaper.thumbUrl ??
-    wallpaper.thumb_url ??
-    wallpaper.previewUrl ??
-    wallpaper.preview_url ??
-    wallpaper.displayUrl ??
-    wallpaper.display_url ??
     wallpaper.displayPath ??
     wallpaper.display_path ??
     imageUrl ??
@@ -368,8 +356,8 @@ export const downloadService = {
     const downloadUrl =
       wallpaper.originalPath ??
       wallpaper.original_path ??
-      wallpaper.downloadUrl ??
-      wallpaper.download_url ??
+      wallpaper.displayPath ??
+      wallpaper.display_path ??
       wallpaper.imageUrl ??
       wallpaper.thumbnailUrl ??
       null;
