@@ -24,7 +24,7 @@ const wallpaperInclude = {
   _count: {
     select: {
       favorites: true,
-      downloads: true,
+      downloadsHistory: true,
     },
   },
 };
@@ -118,10 +118,7 @@ const getWallpaper = async (wallpaperId: string): Promise<AnyObj> => {
 
   const wallpaperRecord = wallpaper as AnyObj;
 
-  if (
-    wallpaperRecord.status &&
-    wallpaperRecord.status !== "READY"
-  ) {
+  if (wallpaperRecord.status && wallpaperRecord.status !== "READY") {
     throw ApiError.badRequest("Wallpaper is still processing.");
   }
 
@@ -130,18 +127,18 @@ const getWallpaper = async (wallpaperId: string): Promise<AnyObj> => {
 
 const isPremiumActive = (
   premiumUntil: Date | null,
-  isPremium: boolean
+  isPremium: boolean,
 ) => {
   return Boolean(
     isPremium &&
       premiumUntil !== null &&
-      premiumUntil > new Date()
+      premiumUntil > new Date(),
   );
 };
 
 const resetUserDailyLimit = async (
   userId: string,
-  lastReset: Date | null
+  lastReset: Date | null,
 ) => {
   const today = new Date().toDateString();
 
@@ -173,7 +170,7 @@ const resetUserDailyLimit = async (
 
 const resetGuestDailyLimit = async (
   guestId: string,
-  lastReset: Date | null
+  lastReset: Date | null,
 ) => {
   const today = new Date().toDateString();
 
@@ -217,7 +214,7 @@ const checkDownloadPermission = ({
   if (wallpaperPremium) {
     if (isGuest) {
       throw ApiError.forbidden(
-        "Please sign in to download premium wallpapers."
+        "Please sign in to download premium wallpapers.",
       );
     }
 
@@ -228,7 +225,7 @@ const checkDownloadPermission = ({
 
   if (!premiumActive && dailyCount >= FREE_DAILY_LIMIT) {
     throw ApiError.forbidden(
-      `Daily free download limit (${FREE_DAILY_LIMIT}) reached.`
+      `Daily free download limit (${FREE_DAILY_LIMIT}) reached.`,
     );
   }
 };
@@ -325,12 +322,12 @@ export const downloadService = {
 
       premiumActive = isPremiumActive(
         user.premiumUntil,
-        user.isPremium
+        user.isPremium,
       );
 
       dailyCount = await resetUserDailyLimit(
         user.id,
-        user.lastDownloadReset
+        user.lastDownloadReset,
       );
 
       checkDownloadPermission({
@@ -346,7 +343,7 @@ export const downloadService = {
 
       dailyCount = await resetGuestDailyLimit(
         guest.id,
-        guest.lastDownloadReset
+        guest.lastDownloadReset,
       );
 
       checkDownloadPermission({
@@ -398,7 +395,7 @@ export const downloadService = {
       downloadCount:
         wallpaper.downloadCount ??
         wallpaper.download_count ??
-        wallpaper._count?.downloads ??
+        wallpaper._count?.downloadsHistory ??
         0,
 
       favoriteCount:
@@ -412,7 +409,7 @@ export const downloadService = {
   async list(
     userId: string,
     limit: number,
-    offset: number
+    offset: number,
   ) {
     const [downloads, total] = await Promise.all([
       prisma.download.findMany({
@@ -441,7 +438,7 @@ export const downloadService = {
     return {
       items: downloads.map((download) => {
         const wallpaper = normalizeWallpaperMedia(
-          download.wallpaper as AnyObj
+          download.wallpaper as AnyObj,
         );
 
         return {
@@ -454,7 +451,7 @@ export const downloadService = {
           downloadCount:
             wallpaper.downloadCount ??
             wallpaper.download_count ??
-            wallpaper._count?.downloads ??
+            wallpaper._count?.downloadsHistory ??
             0,
 
           favoriteCount:

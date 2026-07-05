@@ -16,7 +16,7 @@ const wallpaperInclude = {
   _count: {
     select: {
       favorites: true,
-      downloads: true,
+      downloadsHistory: true,
     },
   },
 };
@@ -25,11 +25,31 @@ const normalizeWallpaperMedia = (wallpaper: AnyObj): AnyObj => {
   const imageUrl =
     wallpaper.imageUrl ??
     wallpaper.image_url ??
+    wallpaper.displayUrl ??
+    wallpaper.display_url ??
+    wallpaper.displayPath ??
+    wallpaper.display_path ??
+    wallpaper.originalUrl ??
+    wallpaper.original_url ??
+    wallpaper.originalPath ??
+    wallpaper.original_path ??
+    wallpaper.downloadUrl ??
+    wallpaper.download_url ??
     null;
 
   const thumbnailUrl =
     wallpaper.thumbnailUrl ??
     wallpaper.thumbnail_url ??
+    wallpaper.thumbnailPath ??
+    wallpaper.thumbnail_path ??
+    wallpaper.thumbUrl ??
+    wallpaper.thumb_url ??
+    wallpaper.previewUrl ??
+    wallpaper.preview_url ??
+    wallpaper.displayUrl ??
+    wallpaper.display_url ??
+    wallpaper.displayPath ??
+    wallpaper.display_path ??
     imageUrl ??
     null;
 
@@ -42,11 +62,13 @@ const normalizeWallpaperMedia = (wallpaper: AnyObj): AnyObj => {
 
 const getUser = async (userId: string) => {
   const user = await prisma.user.findUnique({
-    where: { id: userId },
+    where: {
+      id: userId,
+    },
   });
 
   if (!user) {
-    throw ApiError.unauthorized("User session expired. Please login again.");
+    throw ApiError.notFound("User not found.");
   }
 
   return user;
@@ -54,7 +76,9 @@ const getUser = async (userId: string) => {
 
 const getWallpaper = async (wallpaperId: string): Promise<AnyObj> => {
   const wallpaper = await prisma.wallpaper.findUnique({
-    where: { id: wallpaperId },
+    where: {
+      id: wallpaperId,
+    },
     include: wallpaperInclude,
   });
 
@@ -71,7 +95,9 @@ const getWallpaper = async (wallpaperId: string): Promise<AnyObj> => {
 
 const getFavoriteCount = async (wallpaperId: string) => {
   return prisma.favorite.count({
-    where: { wallpaperId },
+    where: {
+      wallpaperId,
+    },
   });
 };
 
@@ -100,7 +126,9 @@ export const favoriteService = {
 
     const [favorites, total] = await Promise.all([
       prisma.favorite.findMany({
-        where: { userId },
+        where: {
+          userId,
+        },
 
         include: {
           wallpaper: {
@@ -117,7 +145,9 @@ export const favoriteService = {
       }),
 
       prisma.favorite.count({
-        where: { userId },
+        where: {
+          userId,
+        },
       }),
     ]);
 
@@ -139,7 +169,7 @@ export const favoriteService = {
           downloadCount:
             wallpaper.downloadCount ??
             wallpaper.download_count ??
-            wallpaper._count?.downloads ??
+            wallpaper._count?.downloadsHistory ??
             0,
 
           favoritedAt: favorite.createdAt,
