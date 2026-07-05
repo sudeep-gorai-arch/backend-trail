@@ -1,5 +1,5 @@
-import prisma from '../config/prisma';
-import { ApiError } from '../utils/ApiError';
+import prisma from "../config/prisma";
+import { ApiError } from "../utils/ApiError";
 
 type AnyObj = Record<string, any>;
 
@@ -40,21 +40,30 @@ const normalizeWallpaperMedia = (wallpaper: AnyObj): AnyObj => {
   };
 };
 
+const getUser = async (userId: string) => {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+  });
+
+  if (!user) {
+    throw ApiError.unauthorized("User session expired. Please login again.");
+  }
+
+  return user;
+};
+
 const getWallpaper = async (wallpaperId: string): Promise<AnyObj> => {
   const wallpaper = await prisma.wallpaper.findUnique({
-    where: {
-      id: wallpaperId,
-    },
-
+    where: { id: wallpaperId },
     include: wallpaperInclude,
   });
 
   if (!wallpaper) {
-    throw ApiError.notFound('Wallpaper not found.');
+    throw ApiError.notFound("Wallpaper not found.");
   }
 
   if (!wallpaper.active) {
-    throw ApiError.notFound('Wallpaper is inactive.');
+    throw ApiError.notFound("Wallpaper is inactive.");
   }
 
   return normalizeWallpaperMedia(wallpaper as AnyObj);
@@ -62,9 +71,7 @@ const getWallpaper = async (wallpaperId: string): Promise<AnyObj> => {
 
 const getFavoriteCount = async (wallpaperId: string) => {
   return prisma.favorite.count({
-    where: {
-      wallpaperId,
-    },
+    where: { wallpaperId },
   });
 };
 
@@ -89,11 +96,11 @@ const getFavoriteStatus = async (userId: string, wallpaperId: string) => {
 
 export const favoriteService = {
   async list(userId: string, limit: number, offset: number) {
+    await getUser(userId);
+
     const [favorites, total] = await Promise.all([
       prisma.favorite.findMany({
-        where: {
-          userId,
-        },
+        where: { userId },
 
         include: {
           wallpaper: {
@@ -102,18 +109,15 @@ export const favoriteService = {
         },
 
         orderBy: {
-          createdAt: 'desc',
+          createdAt: "desc",
         },
 
         skip: offset,
-
         take: limit,
       }),
 
       prisma.favorite.count({
-        where: {
-          userId,
-        },
+        where: { userId },
       }),
     ]);
 
@@ -147,6 +151,7 @@ export const favoriteService = {
   },
 
   async add(userId: string, wallpaperId: string) {
+    await getUser(userId);
     await getWallpaper(wallpaperId);
 
     await prisma.favorite.upsert({
@@ -169,6 +174,8 @@ export const favoriteService = {
   },
 
   async remove(userId: string, wallpaperId: string) {
+    await getUser(userId);
+
     await prisma.favorite.deleteMany({
       where: {
         userId,
@@ -187,6 +194,7 @@ export const favoriteService = {
   },
 
   async toggle(userId: string, wallpaperId: string) {
+    await getUser(userId);
     await getWallpaper(wallpaperId);
 
     const existing = await prisma.favorite.findUnique({
@@ -234,6 +242,7 @@ export const favoriteService = {
   },
 
   async isFavorite(userId: string, wallpaperId: string) {
+    await getUser(userId);
     await getWallpaper(wallpaperId);
 
     return getFavoriteStatus(userId, wallpaperId);
