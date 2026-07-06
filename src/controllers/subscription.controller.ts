@@ -44,6 +44,24 @@ export const subscriptionController = {
     });
   },
 
+  async cancelSubscription(req: Request, res: Response) {
+    const userId = getUserId(req);
+
+    const cancelAtCycleEnd = req.body?.cancel_at_cycle_end !== false;
+
+    const status = await subscriptionService.cancel(userId, {
+      cancel_at_cycle_end: cancelAtCycleEnd,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: cancelAtCycleEnd
+        ? 'Subscription cancellation scheduled successfully.'
+        : 'Subscription cancelled successfully.',
+      data: status,
+    });
+  },
+
   async getStatus(req: Request, res: Response) {
     const userId = getUserId(req);
 

@@ -53,6 +53,13 @@ router.post(
 );
 
 // ======================================
+// CANCEL SUBSCRIPTION AUTO-RENEWAL
+// POST /api/subscriptions/cancel
+// ======================================
+
+router.post('/cancel', asyncHandler(subscriptionController.cancelSubscription));
+
+// ======================================
 // PREMIUM STATUS
 // GET /api/subscriptions/status
 // ======================================

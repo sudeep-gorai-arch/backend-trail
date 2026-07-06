@@ -30,6 +30,14 @@ const PAID_PLANS: PaidSubscriptionPlan[] = [
 
 const toJsonSafe = (value: unknown) => JSON.parse(JSON.stringify(value));
 
+const toRecord = (value: unknown): Record<string, any> => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return value as Record<string, any>;
+};
+
 const assertPaidPlan = (plan: string): PaidSubscriptionPlan => {
   if (!PAID_PLANS.includes(plan as PaidSubscriptionPlan)) {
     throw ApiError.badRequest('Invalid subscription plan.');
@@ -70,8 +78,51 @@ export function getSubscriptionPlan(plan: string) {
   return SUBSCRIPTION_PLANS[paidPlan];
 }
 
-const mapSubscription = (subscription: any) => {
+const extractRazorpaySubscriptionId = (
+  subscription?: any,
+  payment?: any,
+): string | null => {
+  const paymentNotes = toRecord(payment?.notes);
+
+  const value =
+    subscription?.razorpaySubscriptionId ??
+    subscription?.razorpay_subscription_id ??
+    subscription?.subscriptionId ??
+    subscription?.purchaseToken ??
+    paymentNotes?.razorpaySubscriptionId ??
+    paymentNotes?.razorpay_subscription_id ??
+    paymentNotes?.subscriptionId ??
+    paymentNotes?.purchaseToken ??
+    paymentNotes?.razorpaySubscription?.id ??
+    null;
+
+  if (!value) return null;
+
+  const text = String(value).trim();
+
+  return text || null;
+};
+
+const getCancellationFromPayment = (payment?: any) => {
+  const notes = toRecord(payment?.notes);
+  const cancellation = toRecord(notes.cancellation);
+
+  return {
+    cancelAtCycleEnd: Boolean(
+      cancellation.cancelAtCycleEnd ?? cancellation.cancel_at_cycle_end,
+    ),
+    cancelledAt: cancellation.cancelledAt ?? cancellation.cancelled_at ?? null,
+    razorpaySubscriptionId:
+      cancellation.razorpaySubscriptionId ??
+      cancellation.razorpay_subscription_id ??
+      null,
+  };
+};
+
+const mapSubscription = (subscription: any, payment?: any) => {
   if (!subscription) return null;
+
+  const cancellation = getCancellationFromPayment(payment);
 
   return {
     id: subscription.id,
@@ -81,12 +132,16 @@ const mapSubscription = (subscription: any) => {
     razorpayOrderId: subscription.orderId,
     paymentId: subscription.paymentId,
     razorpayPaymentId: subscription.paymentId,
+    razorpaySubscriptionId: extractRazorpaySubscriptionId(subscription, payment),
+    purchaseToken: subscription.purchaseToken ?? null,
     amount: subscription.amount,
     currency: subscription.currency,
     status: subscription.status,
     startDate: subscription.startDate,
     endDate: subscription.endDate,
     active: subscription.active,
+    cancelAtCycleEnd: cancellation.cancelAtCycleEnd,
+    cancelledAt: cancellation.cancelledAt,
     createdAt: subscription.createdAt,
   };
 };
@@ -106,6 +161,7 @@ const mapPayment = (payment: any) => {
     receipt: payment.receipt,
     paidAt: payment.paidAt,
     createdAt: payment.createdAt,
+    notes: payment.notes,
   };
 };
 
@@ -114,8 +170,6 @@ export const subscriptionService = {
     const paidPlan = assertPaidPlan(plan);
     const selectedPlan = getSubscriptionPlan(paidPlan);
 
-    // Razorpay Orders API expects amount in the smallest currency unit.
-    // For INR, this is paise.
     const amountInPaise = Math.round(selectedPlan.amount * 100);
 
     const receipt = `SUB${Date.now().toString().slice(-8)}${randomUUID()
@@ -332,11 +386,112 @@ export const subscriptionService = {
         isPremium: true,
         premiumUntil: endDate,
         currentPlan: paidPlan,
-        subscription: mapSubscription(subscription),
-        activeSubscription: mapSubscription(subscription),
+        subscription: mapSubscription(subscription, payment),
+        activeSubscription: mapSubscription(subscription, payment),
         latestPayment: mapPayment(payment),
       };
     });
+  },
+
+  async cancel(
+    userId: string,
+    input: {
+      cancel_at_cycle_end?: boolean;
+    } = {},
+  ) {
+    const cancelAtCycleEnd = input.cancel_at_cycle_end !== false;
+    const now = new Date();
+
+    const activeSubscription = await prisma.subscription.findFirst({
+      where: {
+        userId,
+        active: true,
+        status: PaymentStatus.PAID,
+        endDate: {
+          gt: now,
+        },
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    if (!activeSubscription) {
+      throw ApiError.notFound('No active premium subscription found.');
+    }
+
+    if (activeSubscription.plan === 'LIFETIME') {
+      throw ApiError.badRequest('Lifetime plan does not have auto-renewal.');
+    }
+
+    const payment = await prisma.payment.findFirst({
+      where: {
+        userId,
+        subscriptionId: activeSubscription.id,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
+
+    const razorpaySubscriptionId = extractRazorpaySubscriptionId(
+      activeSubscription,
+      payment,
+    );
+
+    if (!razorpaySubscriptionId || !razorpaySubscriptionId.startsWith('sub_')) {
+      throw ApiError.badRequest(
+        'This premium purchase was created as a Razorpay order, not an auto-renewing Razorpay subscription. No autopay subscription id was found to cancel.',
+      );
+    }
+
+    const razorpaySubscription = await (razorpay as any).subscriptions.cancel(
+      razorpaySubscriptionId,
+      {
+        cancel_at_cycle_end: cancelAtCycleEnd,
+      },
+    );
+
+    const cancellation = {
+      cancelAtCycleEnd,
+      cancelledAt: new Date().toISOString(),
+      razorpaySubscriptionId,
+      razorpaySubscription: toJsonSafe(razorpaySubscription),
+    };
+
+    let updatedPayment = payment;
+
+    if (payment) {
+      const existingNotes = toRecord(payment.notes);
+
+      updatedPayment = await prisma.payment.update({
+        where: {
+          id: payment.id,
+        },
+        data: {
+          notes: {
+            ...existingNotes,
+            cancellation,
+          },
+        },
+      });
+    }
+
+    const status = await subscriptionService.status(userId);
+
+    return {
+      ...status,
+      activeSubscription: {
+        ...(mapSubscription(activeSubscription, updatedPayment) as any),
+        cancelAtCycleEnd,
+        status: cancelAtCycleEnd ? 'CANCEL_SCHEDULED' : 'CANCELLED',
+      },
+      cancellation: {
+        cancelAtCycleEnd,
+        cancelledAt: cancellation.cancelledAt,
+        razorpaySubscriptionId,
+      },
+    };
   },
 
   async status(userId: string) {
@@ -357,7 +512,7 @@ export const subscriptionService = {
           orderBy: {
             createdAt: 'desc',
           },
-          take: 1,
+          take: 5,
         },
       },
     });
@@ -377,6 +532,15 @@ export const subscriptionService = {
           subscription.status === PaymentStatus.PAID &&
           subscription.endDate > now,
       ) ?? null;
+
+    const activePayment =
+      activeSubscription
+        ? user.payments.find(
+            payment => payment.subscriptionId === activeSubscription.id,
+          ) ?? null
+        : null;
+
+    const latestPayment = user.payments[0] ?? null;
 
     const premiumUntil = activeSubscription?.endDate ?? user.premiumUntil;
 
@@ -401,13 +565,16 @@ export const subscriptionService = {
       latestSubscription?.plan ??
       'FREE';
 
+    const cancellation = getCancellationFromPayment(activePayment);
+
     return {
       isPremium,
       premiumUntil: premiumUntil ?? null,
       currentPlan,
-      activeSubscription: mapSubscription(activeSubscription),
+      activeSubscription: mapSubscription(activeSubscription, activePayment),
       latestSubscription: mapSubscription(latestSubscription),
-      latestPayment: mapPayment(user.payments[0] ?? null),
+      latestPayment: mapPayment(latestPayment),
+      cancellation: cancellation.cancelAtCycleEnd ? cancellation : undefined,
     };
   },
 
