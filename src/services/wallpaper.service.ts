@@ -16,6 +16,8 @@ import { deleteFromR2, uploadBufferToR2 } from "./r2.service";
 // TYPES
 // ======================================================
 
+type WallpaperMediaTypeValue = "IMAGE" | "VIDEO";
+
 export interface ListWallpaperParams {
   limit: number;
 
@@ -49,13 +51,21 @@ export interface CreateWallpaperInput {
 
   categoryId: string;
 
+  mediaType?: WallpaperMediaTypeValue | string;
+
   quality?: WallpaperQuality;
 
   isPremium?: boolean | string;
 
   isFeatured?: boolean | string;
 
-  tags?: string[];
+  tags?: string[] | string;
+
+  durationSeconds?: number | string | null;
+
+  videoBitrate?: number | string | null;
+
+  videoFps?: number | string | null;
 }
 
 export interface UpdateWallpaperInput {
@@ -73,8 +83,112 @@ export interface UpdateWallpaperInput {
 
   active?: boolean | string;
 
-  tags?: string[];
+  tags?: string[] | string;
 }
+
+export interface CreateWallpaperFilesInput {
+  mediaType?: WallpaperMediaTypeValue | string;
+
+  imageFile?: Express.Multer.File;
+
+  videoFile?: Express.Multer.File;
+
+  previewImageFile?: Express.Multer.File;
+
+  thumbnailFile?: Express.Multer.File;
+}
+
+export interface CreateManyWallpaperFilesInput {
+  imageFiles?: Express.Multer.File[];
+
+  videoFiles?: Express.Multer.File[];
+
+  previewImageFiles?: Express.Multer.File[];
+
+  thumbnailFiles?: Express.Multer.File[];
+}
+
+type ProcessedImageMedia = {
+  originalPath: string;
+
+  displayPath: string;
+
+  thumbnailPath: string;
+
+  originalKey: string;
+
+  displayKey: string;
+
+  thumbnailKey: string;
+
+  width: number;
+
+  height: number;
+
+  aspectRatio: number;
+
+  originalSize: number;
+
+  displaySize: number;
+
+  thumbnailSize: number;
+
+  blurHash?: string | null;
+
+  dominantColor?: string | null;
+};
+
+type ProcessedWallpaperMedia = {
+  mediaType: WallpaperMediaTypeValue;
+
+  originalPath: string;
+
+  displayPath: string;
+
+  thumbnailPath: string;
+
+  videoPath?: string | null;
+
+  videoPreviewPath?: string | null;
+
+  videoThumbnailPath?: string | null;
+
+  originalName: string;
+
+  fileName: string;
+
+  mimeType: string;
+
+  extension: string;
+
+  width: number;
+
+  height: number;
+
+  aspectRatio: number;
+
+  originalSize: number;
+
+  displaySize: number;
+
+  thumbnailSize: number;
+
+  videoSize?: number | null;
+
+  durationSeconds?: number | null;
+
+  videoBitrate?: number | null;
+
+  videoFps?: number | null;
+
+  checksum?: string | null;
+
+  blurHash?: string | null;
+
+  dominantColor?: string | null;
+
+  format: string;
+};
 
 // ======================================================
 // PRISMA INCLUDE
@@ -216,27 +330,83 @@ function toOptionalBoolean(value: unknown): boolean | undefined {
   return toBoolean(value);
 }
 
+function toOptionalNumber(value: unknown): number | null {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const numberValue = Number(value);
+
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function parseStringArray(value: unknown): string[] {
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => parseStringArray(item))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+
+      if (Array.isArray(parsed)) {
+        return parseStringArray(parsed);
+      }
+    } catch {
+      // Not JSON, continue with comma split
+    }
+
+    return trimmed
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [String(value).trim()].filter(Boolean);
+}
+
+function getIndexedValue(value: unknown, index: number): string | undefined {
+  const values = parseStringArray(value);
+
+  return values[index];
+}
+
+function normalizeMediaType(
+  rawMediaType?: unknown,
+  hasVideoFile = false
+): WallpaperMediaTypeValue {
+  const value = String(rawMediaType || "")
+    .trim()
+    .toUpperCase();
+
+  if (value === "VIDEO") {
+    return "VIDEO";
+  }
+
+  if (value === "IMAGE") {
+    return "IMAGE";
+  }
+
+  return hasVideoFile ? "VIDEO" : "IMAGE";
+}
+
 function createWallpaperData(
   data: CreateWallpaperInput,
   slug: string,
-  image: {
-    originalPath: string;
-    displayPath: string;
-    thumbnailPath: string;
-    originalName: string;
-    fileName: string;
-    mimeType: string;
-    extension: string;
-    width: number;
-    height: number;
-    aspectRatio: number;
-    originalSize: number;
-    displaySize: number;
-    thumbnailSize: number;
-    checksum?: string | null;
-    blurHash?: string | null;
-    dominantColor?: string | null;
-  },
+  media: ProcessedWallpaperMedia,
   searchableText: string
 ): Prisma.WallpaperCreateInput {
   const isPremium = toBoolean(data.isPremium, false);
@@ -256,41 +426,57 @@ function createWallpaperData(
       },
     },
 
-    originalPath: image.originalPath,
+    mediaType: media.mediaType,
 
-    displayPath: image.displayPath,
+    originalPath: media.originalPath,
 
-    thumbnailPath: image.thumbnailPath,
+    displayPath: media.displayPath,
 
-    originalName: image.originalName,
+    thumbnailPath: media.thumbnailPath,
 
-    fileName: image.fileName,
+    videoPath: media.videoPath,
 
-    mimeType: image.mimeType,
+    videoPreviewPath: media.videoPreviewPath,
 
-    extension: image.extension,
+    videoThumbnailPath: media.videoThumbnailPath,
 
-    width: image.width,
+    durationSeconds: media.durationSeconds,
 
-    height: image.height,
+    videoBitrate: media.videoBitrate,
 
-    aspectRatio: image.aspectRatio,
+    videoFps: media.videoFps,
 
-    originalSize: image.originalSize,
+    originalName: media.originalName,
 
-    displaySize: image.displaySize,
+    fileName: media.fileName,
 
-    thumbnailSize: image.thumbnailSize,
+    mimeType: media.mimeType,
+
+    extension: media.extension,
+
+    width: media.width,
+
+    height: media.height,
+
+    aspectRatio: media.aspectRatio,
+
+    originalSize: media.originalSize,
+
+    displaySize: media.displaySize,
+
+    thumbnailSize: media.thumbnailSize,
+
+    videoSize: media.videoSize,
 
     quality: data.quality ?? WallpaperQuality.UHD_4K,
 
-    format: "webp",
+    format: media.format,
 
-    checksum: image.checksum,
+    checksum: media.checksum,
 
-    blurHash: image.blurHash,
+    blurHash: media.blurHash,
 
-    dominantColor: image.dominantColor,
+    dominantColor: media.dominantColor,
 
     searchableText,
 
@@ -304,79 +490,198 @@ function createWallpaperData(
   };
 }
 
+function toVariantFormat(extensionOrMimeType?: string | null) {
+  const value = String(extensionOrMimeType || "")
+    .trim()
+    .toLowerCase();
+
+  if (value.includes("png")) return "PNG";
+  if (value.includes("avif")) return "AVIF";
+  if (value.includes("jpg") || value.includes("jpeg")) return "JPG";
+  if (value.includes("mp4")) return "MP4";
+  if (value.includes("webm")) return "WEBM";
+  if (value.includes("mov") || value.includes("quicktime")) return "MOV";
+  if (value.includes("m4v")) return "M4V";
+
+  return "WEBP";
+}
+
 async function createWallpaperVariants(
   wallpaperId: string,
   data: {
+    mediaType: WallpaperMediaTypeValue;
+
     originalPath: string;
+
     displayPath: string;
+
     thumbnailPath: string;
+
+    videoPath?: string | null;
+
+    videoPreviewPath?: string | null;
+
+    videoThumbnailPath?: string | null;
+
     width: number;
+
     height: number;
+
     originalSize: number;
+
     displaySize: number;
+
     thumbnailSize: number;
+
+    videoSize?: number | null;
+
+    extension?: string;
+
+    mimeType?: string;
   }
 ) {
+  const displayWidth = Math.min(data.width, 1440);
+  const displayHeight = Math.round((displayWidth * data.height) / data.width);
+
+  const thumbnailWidth = Math.min(data.width, 400);
+  const thumbnailHeight = Math.round((thumbnailWidth * data.height) / data.width);
+
+  const variants: Prisma.WallpaperVariantCreateManyInput[] = [
+    {
+      wallpaperId,
+
+      type: "ORIGINAL",
+
+      url: data.originalPath,
+
+      width: data.width,
+
+      height: data.height,
+
+      size: data.originalSize,
+
+      format: toVariantFormat(data.extension) as any,
+
+      compressionQuality: data.mediaType === "VIDEO" ? 100 : 95,
+
+      isDefault: false,
+    },
+
+    {
+      wallpaperId,
+
+      type: "DISPLAY",
+
+      url: data.displayPath,
+
+      width: displayWidth,
+
+      height: displayHeight,
+
+      size: data.displaySize,
+
+      format: "WEBP" as any,
+
+      compressionQuality: 82,
+
+      isDefault: data.mediaType === "IMAGE",
+    },
+
+    {
+      wallpaperId,
+
+      type: "THUMBNAIL",
+
+      url: data.thumbnailPath,
+
+      width: thumbnailWidth,
+
+      height: thumbnailHeight,
+
+      size: data.thumbnailSize,
+
+      format: "WEBP" as any,
+
+      compressionQuality: 65,
+
+      isDefault: false,
+    },
+  ];
+
+  if (data.mediaType === "VIDEO" && data.videoPath) {
+    variants.push({
+      wallpaperId,
+
+      type: "VIDEO" as any,
+
+      url: data.videoPath,
+
+      width: data.width,
+
+      height: data.height,
+
+      size: data.videoSize ?? data.originalSize,
+
+      format: toVariantFormat(data.mimeType || data.extension) as any,
+
+      compressionQuality: 100,
+
+      isDefault: true,
+    });
+  }
+
+  if (data.mediaType === "VIDEO" && data.videoPreviewPath) {
+    variants.push({
+      wallpaperId,
+
+      type: "VIDEO_PREVIEW" as any,
+
+      url: data.videoPreviewPath,
+
+      width: displayWidth,
+
+      height: displayHeight,
+
+      size: data.displaySize,
+
+      format: "WEBP" as any,
+
+      compressionQuality: 82,
+
+      isDefault: false,
+    });
+  }
+
+  if (data.mediaType === "VIDEO" && data.videoThumbnailPath) {
+    variants.push({
+      wallpaperId,
+
+      type: "VIDEO_THUMBNAIL" as any,
+
+      url: data.videoThumbnailPath,
+
+      width: thumbnailWidth,
+
+      height: thumbnailHeight,
+
+      size: data.thumbnailSize,
+
+      format: "WEBP" as any,
+
+      compressionQuality: 65,
+
+      isDefault: false,
+    });
+  }
+
   await prisma.wallpaperVariant.createMany({
-    data: [
-      {
-        wallpaperId,
-
-        type: "ORIGINAL",
-
-        url: data.originalPath,
-
-        width: data.width,
-
-        height: data.height,
-
-        size: data.originalSize,
-
-        compressionQuality: 95,
-
-        isDefault: false,
-      },
-
-      {
-        wallpaperId,
-
-        type: "DISPLAY",
-
-        url: data.displayPath,
-
-        width: Math.min(data.width, 1440),
-
-        height: Math.round((Math.min(data.width, 1440) * data.height) / data.width),
-
-        size: data.displaySize,
-
-        compressionQuality: 82,
-
-        isDefault: true,
-      },
-
-      {
-        wallpaperId,
-
-        type: "THUMBNAIL",
-
-        url: data.thumbnailPath,
-
-        width: Math.min(data.width, 400),
-
-        height: Math.round((Math.min(data.width, 400) * data.height) / data.width),
-
-        size: data.thumbnailSize,
-
-        compressionQuality: 65,
-
-        isDefault: false,
-      },
-    ],
+    data: variants,
   });
 }
 
-async function syncWallpaperTags(wallpaperId: string, tags: string[] = []) {
+async function syncWallpaperTags(wallpaperId: string, rawTags: string[] | string = []) {
+  const tags = parseStringArray(rawTags);
+
   if (!tags.length) {
     return;
   }
@@ -427,18 +732,34 @@ async function removeWallpaperTags(wallpaperId: string) {
 }
 
 async function deleteWallpaperFiles(wallpaper: {
-  originalPath: string;
-  displayPath: string;
-  thumbnailPath: string;
+  originalPath?: string | null;
+  displayPath?: string | null;
+  thumbnailPath?: string | null;
+  videoPath?: string | null;
+  videoPreviewPath?: string | null;
+  videoThumbnailPath?: string | null;
+  variantPaths?: Array<string | null | undefined>;
 }) {
   const files = [
     wallpaper.originalPath,
     wallpaper.displayPath,
     wallpaper.thumbnailPath,
+    wallpaper.videoPath,
+    wallpaper.videoPreviewPath,
+    wallpaper.videoThumbnailPath,
+    ...(wallpaper.variantPaths || []),
   ];
 
+  const uniqueFiles = Array.from(
+    new Set(
+      files
+        .map((file) => String(file || "").trim())
+        .filter(Boolean)
+    )
+  );
+
   await Promise.all(
-    files.map(async (file) => {
+    uniqueFiles.map(async (file) => {
       try {
         await deleteFromR2(file);
       } catch {
@@ -467,18 +788,57 @@ function getExtension(filename: string, mimetype?: string) {
 
   if (ext) return ext;
 
-  if (mimetype?.includes("png")) return "png";
-  if (mimetype?.includes("webp")) return "webp";
-  if (mimetype?.includes("avif")) return "avif";
+  const mime = String(mimetype || "").toLowerCase();
+
+  if (mime.includes("png")) return "png";
+  if (mime.includes("webp")) return "webp";
+  if (mime.includes("avif")) return "avif";
+  if (mime.includes("jpeg") || mime.includes("jpg")) return "jpg";
+  if (mime.includes("mp4")) return "mp4";
+  if (mime.includes("webm")) return "webm";
+  if (mime.includes("quicktime")) return "mov";
+  if (mime.includes("m4v")) return "m4v";
 
   return "jpg";
+}
+
+function isVideoFile(file?: Express.Multer.File) {
+  return String(file?.mimetype || "")
+    .toLowerCase()
+    .startsWith("video/");
+}
+
+async function buildGeneratedPreviewImageBuffer() {
+  return sharp({
+    create: {
+      width: 1080,
+      height: 1920,
+      channels: 4,
+      background: {
+        r: 15,
+        g: 15,
+        b: 16,
+        alpha: 1,
+      },
+    },
+  })
+    .webp({
+      quality: 82,
+      effort: 6,
+    })
+    .toBuffer();
 }
 
 async function processWallpaperForR2(
   file: Express.Multer.File,
   categoryFolder: string,
-  slug: string
-) {
+  slug: string,
+  folders = {
+    original: "originals",
+    display: "display",
+    thumbnail: "thumbnails",
+  }
+): Promise<ProcessedImageMedia> {
   if (!file.buffer || file.buffer.length === 0) {
     throw ApiError.badRequest("Uploaded wallpaper file buffer is empty.");
   }
@@ -521,21 +881,21 @@ async function processWallpaperForR2(
     originalName:
       file.originalname || `${slug}.${getExtension(file.originalname, file.mimetype)}`,
     contentType: file.mimetype || "application/octet-stream",
-    folder: `originals/${categoryFolder}`,
+    folder: `${folders.original}/${categoryFolder}`,
   });
 
   const displayUpload = await uploadBufferToR2({
     buffer: displayBuffer,
     originalName: `${slug}-display.webp`,
     contentType: "image/webp",
-    folder: `display/${categoryFolder}`,
+    folder: `${folders.display}/${categoryFolder}`,
   });
 
   const thumbnailUpload = await uploadBufferToR2({
     buffer: thumbnailBuffer,
     originalName: `${slug}-thumbnail.webp`,
     contentType: "image/webp",
-    folder: `thumbnails/${categoryFolder}`,
+    folder: `${folders.thumbnail}/${categoryFolder}`,
   });
 
   return {
@@ -556,6 +916,380 @@ async function processWallpaperForR2(
   };
 }
 
+async function processGeneratedPreviewForR2(
+  categoryFolder: string,
+  slug: string
+): Promise<ProcessedImageMedia> {
+  const previewBuffer = await buildGeneratedPreviewImageBuffer();
+
+  const file = {
+    fieldname: "previewImage",
+    originalname: `${slug}-preview.webp`,
+    encoding: "7bit",
+    mimetype: "image/webp",
+    size: previewBuffer.length,
+    buffer: previewBuffer,
+  } as Express.Multer.File;
+
+  return processWallpaperForR2(file, categoryFolder, slug, {
+    original: "video-previews/originals",
+    display: "video-previews/display",
+    thumbnail: "video-previews/thumbnails",
+  });
+}
+
+async function uploadVideoToR2(
+  file: Express.Multer.File,
+  categoryFolder: string,
+  slug: string
+) {
+  if (!file.buffer || file.buffer.length === 0) {
+    throw ApiError.badRequest("Uploaded video file buffer is empty.");
+  }
+
+  const extension = getExtension(file.originalname, file.mimetype);
+
+  const upload = await uploadBufferToR2({
+    buffer: file.buffer,
+    originalName: `${slug}.${extension}`,
+    contentType: file.mimetype || "application/octet-stream",
+    folder: `videos/${categoryFolder}`,
+  });
+
+  return {
+    url: upload.url,
+    key: upload.key,
+    extension,
+  };
+}
+
+function normalizeCreateFiles(
+  fileOrFiles: Express.Multer.File | CreateWallpaperFilesInput,
+  data: CreateWallpaperInput
+): Required<Pick<CreateWallpaperFilesInput, "mediaType">> &
+  Omit<CreateWallpaperFilesInput, "mediaType"> {
+  if ("buffer" in fileOrFiles) {
+    return {
+      mediaType: "IMAGE",
+      imageFile: fileOrFiles,
+      videoFile: undefined,
+      previewImageFile: undefined,
+      thumbnailFile: undefined,
+    };
+  }
+
+  const mediaType = normalizeMediaType(
+    fileOrFiles.mediaType || data.mediaType,
+    Boolean(fileOrFiles.videoFile)
+  );
+
+  return {
+    mediaType,
+    imageFile: fileOrFiles.imageFile,
+    videoFile: fileOrFiles.videoFile,
+    previewImageFile: fileOrFiles.previewImageFile,
+    thumbnailFile: fileOrFiles.thumbnailFile,
+  };
+}
+
+async function createImageWallpaper(
+  file: Express.Multer.File,
+  data: CreateWallpaperInput
+) {
+  const category = await getCategory(data.categoryId);
+
+  const slug = await generateUniqueSlug("wallpaper", data.title);
+
+  if (!file.buffer || file.buffer.length === 0) {
+    throw ApiError.badRequest("Uploaded wallpaper file buffer is empty.");
+  }
+
+  if (isVideoFile(file)) {
+    throw ApiError.badRequest("Image wallpaper upload received a video file.");
+  }
+
+  const checksum = buildChecksum(file.buffer);
+
+  const duplicate = await prisma.wallpaper.findUnique({
+    where: {
+      checksum,
+    },
+  });
+
+  if (duplicate) {
+    throw ApiError.conflict("Wallpaper already exists.");
+  }
+
+  const categoryFolder = safeFolderName(
+    category.folderName || category.slug || category.name
+  );
+
+  const originalExtension = getExtension(file.originalname, file.mimetype);
+
+  const image = await processWallpaperForR2(file, categoryFolder, slug);
+
+  const tags = parseStringArray(data.tags);
+
+  const searchableText = buildSearchableText(
+    data.title,
+    data.description,
+    category.name,
+    tags
+  );
+
+  const originalFileName = image.originalKey.split("/").pop() || file.originalname;
+
+  const media: ProcessedWallpaperMedia = {
+    mediaType: "IMAGE",
+
+    originalPath: image.originalPath,
+
+    displayPath: image.displayPath,
+
+    thumbnailPath: image.thumbnailPath,
+
+    videoPath: null,
+
+    videoPreviewPath: null,
+
+    videoThumbnailPath: null,
+
+    originalName: file.originalname,
+
+    fileName: originalFileName,
+
+    mimeType: file.mimetype,
+
+    extension: originalExtension,
+
+    width: image.width,
+
+    height: image.height,
+
+    aspectRatio: image.aspectRatio,
+
+    originalSize: image.originalSize,
+
+    displaySize: image.displaySize,
+
+    thumbnailSize: image.thumbnailSize,
+
+    videoSize: null,
+
+    durationSeconds: null,
+
+    videoBitrate: null,
+
+    videoFps: null,
+
+    checksum,
+
+    blurHash: image.blurHash,
+
+    dominantColor: image.dominantColor,
+
+    format: "webp",
+  };
+
+  const wallpaper = await prisma.wallpaper.create({
+    data: createWallpaperData(data, slug, media, searchableText),
+
+    include: wallpaperInclude,
+  });
+
+  await createWallpaperVariants(wallpaper.id, {
+    mediaType: "IMAGE",
+
+    originalPath: media.originalPath,
+
+    displayPath: media.displayPath,
+
+    thumbnailPath: media.thumbnailPath,
+
+    width: wallpaper.width,
+
+    height: wallpaper.height,
+
+    originalSize: wallpaper.originalSize,
+
+    displaySize: wallpaper.displaySize,
+
+    thumbnailSize: wallpaper.thumbnailSize,
+
+    extension: originalExtension,
+
+    mimeType: file.mimetype,
+  });
+
+  await syncWallpaperTags(wallpaper.id, tags);
+
+  await incrementCategoryCount(category.id);
+
+  return mapWallpaper(wallpaper);
+}
+
+async function createVideoWallpaper(
+  files: CreateWallpaperFilesInput,
+  data: CreateWallpaperInput
+) {
+  const videoFile = files.videoFile;
+
+  if (!videoFile) {
+    throw ApiError.badRequest("Wallpaper video is required.");
+  }
+
+  if (!isVideoFile(videoFile)) {
+    throw ApiError.badRequest("Video wallpaper upload received a non-video file.");
+  }
+
+  const category = await getCategory(data.categoryId);
+
+  const slug = await generateUniqueSlug("wallpaper", data.title);
+
+  if (!videoFile.buffer || videoFile.buffer.length === 0) {
+    throw ApiError.badRequest("Uploaded video file buffer is empty.");
+  }
+
+  const checksum = buildChecksum(videoFile.buffer);
+
+  const duplicate = await prisma.wallpaper.findUnique({
+    where: {
+      checksum,
+    },
+  });
+
+  if (duplicate) {
+    throw ApiError.conflict("Video wallpaper already exists.");
+  }
+
+  const categoryFolder = safeFolderName(
+    category.folderName || category.slug || category.name
+  );
+
+  const videoUpload = await uploadVideoToR2(videoFile, categoryFolder, slug);
+
+  const previewSourceFile =
+    files.previewImageFile || files.thumbnailFile || files.imageFile;
+
+  const preview = previewSourceFile
+    ? await processWallpaperForR2(previewSourceFile, categoryFolder, slug, {
+        original: "video-previews/originals",
+        display: "video-previews/display",
+        thumbnail: "video-previews/thumbnails",
+      })
+    : await processGeneratedPreviewForR2(categoryFolder, slug);
+
+  const tags = parseStringArray(data.tags);
+
+  const searchableText = buildSearchableText(
+    data.title,
+    data.description,
+    category.name,
+    [...tags, "video", "live wallpaper"]
+  );
+
+  const originalFileName =
+    videoUpload.key.split("/").pop() || videoFile.originalname;
+
+  const extension = videoUpload.extension;
+
+  const media: ProcessedWallpaperMedia = {
+    mediaType: "VIDEO",
+
+    originalPath: preview.originalPath,
+
+    displayPath: preview.displayPath,
+
+    thumbnailPath: preview.thumbnailPath,
+
+    videoPath: videoUpload.url,
+
+    videoPreviewPath: preview.displayPath,
+
+    videoThumbnailPath: preview.thumbnailPath,
+
+    originalName: videoFile.originalname,
+
+    fileName: originalFileName,
+
+    mimeType: videoFile.mimetype,
+
+    extension,
+
+    width: preview.width,
+
+    height: preview.height,
+
+    aspectRatio: preview.aspectRatio,
+
+    originalSize: videoFile.size || videoFile.buffer.length,
+
+    displaySize: preview.displaySize,
+
+    thumbnailSize: preview.thumbnailSize,
+
+    videoSize: videoFile.size || videoFile.buffer.length,
+
+    durationSeconds: toOptionalNumber(data.durationSeconds),
+
+    videoBitrate: toOptionalNumber(data.videoBitrate),
+
+    videoFps: toOptionalNumber(data.videoFps),
+
+    checksum,
+
+    blurHash: preview.blurHash,
+
+    dominantColor: preview.dominantColor,
+
+    format: extension,
+  };
+
+  const wallpaper = await prisma.wallpaper.create({
+    data: createWallpaperData(data, slug, media, searchableText),
+
+    include: wallpaperInclude,
+  });
+
+  await createWallpaperVariants(wallpaper.id, {
+    mediaType: "VIDEO",
+
+    originalPath: media.originalPath,
+
+    displayPath: media.displayPath,
+
+    thumbnailPath: media.thumbnailPath,
+
+    videoPath: media.videoPath,
+
+    videoPreviewPath: media.videoPreviewPath,
+
+    videoThumbnailPath: media.videoThumbnailPath,
+
+    width: wallpaper.width,
+
+    height: wallpaper.height,
+
+    originalSize: wallpaper.originalSize,
+
+    displaySize: wallpaper.displaySize,
+
+    thumbnailSize: wallpaper.thumbnailSize,
+
+    videoSize: wallpaper.videoSize,
+
+    extension,
+
+    mimeType: videoFile.mimetype,
+  });
+
+  await syncWallpaperTags(wallpaper.id, tags);
+
+  await incrementCategoryCount(category.id);
+
+  return mapWallpaper(wallpaper);
+}
+
 // ======================================================
 // SERVICE
 // ======================================================
@@ -569,6 +1303,8 @@ export const wallpaperService = {
     premium,
     featured,
     active = true,
+    quality,
+    sort,
   }: ListWallpaperParams) {
     const where: Prisma.WallpaperWhereInput = {
       deletedAt: null,
@@ -617,20 +1353,69 @@ export const wallpaperService = {
       where.isFeatured = featured;
     }
 
+    if (quality !== undefined) {
+      where.quality = quality;
+    }
+
+    const orderBy: Prisma.WallpaperOrderByWithRelationInput[] =
+      sort === "popular"
+        ? [
+            {
+              downloadCount: "desc",
+            },
+            {
+              likeCount: "desc",
+            },
+            {
+              createdAt: "desc",
+            },
+          ]
+        : sort === "downloads"
+          ? [
+              {
+                downloadCount: "desc",
+              },
+              {
+                createdAt: "desc",
+              },
+            ]
+          : sort === "likes"
+            ? [
+                {
+                  likeCount: "desc",
+                },
+                {
+                  createdAt: "desc",
+                },
+              ]
+            : sort === "featured"
+              ? [
+                  {
+                    featuredOrder: "asc",
+                  },
+                  {
+                    featuredAt: "desc",
+                  },
+                  {
+                    createdAt: "desc",
+                  },
+                ]
+              : [
+                  {
+                    featuredOrder: "asc",
+                  },
+                  {
+                    createdAt: "desc",
+                  },
+                ];
+
     const [items, total] = await Promise.all([
       prisma.wallpaper.findMany({
         where,
 
         include: wallpaperInclude,
 
-        orderBy: [
-          {
-            featuredOrder: "asc",
-          },
-          {
-            createdAt: "desc",
-          },
-        ],
+        orderBy,
 
         skip: offset,
 
@@ -740,10 +1525,7 @@ export const wallpaperService = {
     return wallpapers.map(mapWallpaper);
   },
 
-  async getTopWeek({
-    limit = 10,
-    category,
-  }: TopWeekWallpaperParams = {}) {
+  async getTopWeek({ limit = 10, category }: TopWeekWallpaperParams = {}) {
     const safeLimit = Math.min(Math.max(Number(limit) || 10, 1), 50);
 
     const selectedCategory = String(category || "").trim();
@@ -925,139 +1707,135 @@ export const wallpaperService = {
     };
   },
 
-  async create(file: Express.Multer.File, data: CreateWallpaperInput) {
-    const category = await getCategory(data.categoryId);
+  async create(
+    fileOrFiles: Express.Multer.File | CreateWallpaperFilesInput,
+    data: CreateWallpaperInput
+  ) {
+    const files = normalizeCreateFiles(fileOrFiles, data);
 
-    const slug = await generateUniqueSlug("wallpaper", data.title);
-
-    if (!file.buffer || file.buffer.length === 0) {
-      throw ApiError.badRequest("Uploaded wallpaper file buffer is empty.");
+    if (files.mediaType === "VIDEO") {
+      return createVideoWallpaper(files, {
+        ...data,
+        mediaType: "VIDEO",
+      });
     }
 
-    const checksum = buildChecksum(file.buffer);
-
-    const duplicate = await prisma.wallpaper.findUnique({
-      where: {
-        checksum,
-      },
-    });
-
-    if (duplicate) {
-      throw ApiError.conflict("Wallpaper already exists.");
+    if (!files.imageFile) {
+      throw ApiError.badRequest("Wallpaper image is required.");
     }
 
-    const categoryFolder = safeFolderName(
-      category.folderName || category.slug || category.name
-    );
-
-    const originalExtension = getExtension(file.originalname, file.mimetype);
-
-    const image = await processWallpaperForR2(file, categoryFolder, slug);
-
-    const searchableText = buildSearchableText(
-      data.title,
-      data.description,
-      category.name,
-      data.tags
-    );
-
-    const originalFileName = image.originalKey.split("/").pop() || file.originalname;
-
-    const wallpaper = await prisma.wallpaper.create({
-      data: createWallpaperData(
-        data,
-        slug,
-        {
-          originalPath: image.originalPath,
-
-          displayPath: image.displayPath,
-
-          thumbnailPath: image.thumbnailPath,
-
-          originalName: file.originalname,
-
-          fileName: originalFileName,
-
-          mimeType: file.mimetype,
-
-          extension: originalExtension,
-
-          width: image.width,
-
-          height: image.height,
-
-          aspectRatio: image.aspectRatio,
-
-          originalSize: image.originalSize,
-
-          displaySize: image.displaySize,
-
-          thumbnailSize: image.thumbnailSize,
-
-          checksum,
-
-          blurHash: image.blurHash,
-
-          dominantColor: image.dominantColor,
-        },
-        searchableText
-      ),
-
-      include: wallpaperInclude,
+    return createImageWallpaper(files.imageFile, {
+      ...data,
+      mediaType: "IMAGE",
     });
-
-    await createWallpaperVariants(wallpaper.id, {
-      originalPath: image.originalPath,
-
-      displayPath: image.displayPath,
-
-      thumbnailPath: image.thumbnailPath,
-
-      width: wallpaper.width,
-
-      height: wallpaper.height,
-
-      originalSize: wallpaper.originalSize,
-
-      displaySize: wallpaper.displaySize,
-
-      thumbnailSize: wallpaper.thumbnailSize,
-    });
-
-    await syncWallpaperTags(wallpaper.id, data.tags);
-
-    await incrementCategoryCount(category.id);
-
-    return mapWallpaper(wallpaper);
   },
 
   async createMany(
-    files: Express.Multer.File[],
+    filesOrInput: Express.Multer.File[] | CreateManyWallpaperFilesInput,
     body: Omit<CreateWallpaperInput, "title"> & {
-      titles: string[];
-      descriptions?: string[];
+      titles?: string[] | string;
+      descriptions?: string[] | string;
     }
   ) {
     const wallpapers = [];
 
-    for (let i = 0; i < files.length; i++) {
+    if (Array.isArray(filesOrInput)) {
+      for (let i = 0; i < filesOrInput.length; i++) {
+        wallpapers.push(
+          await this.create(filesOrInput[i], {
+            title: getIndexedValue(body.titles, i) ?? filesOrInput[i].originalname,
+
+            description: getIndexedValue(body.descriptions, i) ?? null,
+
+            categoryId: body.categoryId,
+
+            mediaType: "IMAGE",
+
+            quality: body.quality,
+
+            isPremium: body.isPremium,
+
+            isFeatured: body.isFeatured,
+
+            tags: body.tags,
+          })
+        );
+      }
+
+      return wallpapers;
+    }
+
+    const imageFiles = filesOrInput.imageFiles || [];
+    const videoFiles = filesOrInput.videoFiles || [];
+    const previewImageFiles = filesOrInput.previewImageFiles || [];
+    const thumbnailFiles = filesOrInput.thumbnailFiles || [];
+
+    let titleIndex = 0;
+
+    for (let i = 0; i < imageFiles.length; i++) {
+      const file = imageFiles[i];
+
       wallpapers.push(
-        await this.create(files[i], {
-          title: body.titles[i] ?? files[i].originalname,
+        await this.create(
+          {
+            mediaType: "IMAGE",
+            imageFile: file,
+          },
+          {
+            title: getIndexedValue(body.titles, titleIndex) ?? file.originalname,
 
-          description: body.descriptions?.[i] ?? null,
+            description: getIndexedValue(body.descriptions, titleIndex) ?? null,
 
-          categoryId: body.categoryId,
+            categoryId: body.categoryId,
 
-          quality: body.quality,
+            mediaType: "IMAGE",
 
-          isPremium: body.isPremium,
+            quality: body.quality,
 
-          isFeatured: body.isFeatured,
+            isPremium: body.isPremium,
 
-          tags: body.tags,
-        })
+            isFeatured: body.isFeatured,
+
+            tags: body.tags,
+          }
+        )
       );
+
+      titleIndex++;
+    }
+
+    for (let i = 0; i < videoFiles.length; i++) {
+      const file = videoFiles[i];
+
+      wallpapers.push(
+        await this.create(
+          {
+            mediaType: "VIDEO",
+            videoFile: file,
+            previewImageFile: previewImageFiles[i],
+            thumbnailFile: thumbnailFiles[i],
+          },
+          {
+            title: getIndexedValue(body.titles, titleIndex) ?? file.originalname,
+
+            description: getIndexedValue(body.descriptions, titleIndex) ?? null,
+
+            categoryId: body.categoryId,
+
+            mediaType: "VIDEO",
+
+            quality: body.quality,
+
+            isPremium: body.isPremium,
+
+            isFeatured: body.isFeatured,
+
+            tags: body.tags,
+          }
+        )
+      );
+
+      titleIndex++;
     }
 
     return wallpapers;
@@ -1106,8 +1884,9 @@ export const wallpaperService = {
     const description = data.description ?? existing.description;
 
     const tags =
-      data.tags ??
-      existing.wallpaperTags.map((tag) => tag.tag.name);
+      data.tags !== undefined
+        ? parseStringArray(data.tags)
+        : existing.wallpaperTags.map((tag) => tag.tag.name);
 
     const searchableText = buildSearchableText(
       title,
@@ -1167,10 +1946,10 @@ export const wallpaperService = {
       include: wallpaperInclude,
     });
 
-    if (data.tags) {
+    if (data.tags !== undefined) {
       await removeWallpaperTags(id);
 
-      await syncWallpaperTags(id, data.tags);
+      await syncWallpaperTags(id, tags);
     }
 
     await this.refreshCacheVersion(id);
@@ -1182,6 +1961,14 @@ export const wallpaperService = {
     const wallpaper = await prisma.wallpaper.findUnique({
       where: {
         id,
+      },
+
+      include: {
+        wallpaperVariants: {
+          select: {
+            url: true,
+          },
+        },
       },
     });
 
@@ -1207,6 +1994,14 @@ export const wallpaperService = {
       displayPath: wallpaper.displayPath,
 
       thumbnailPath: wallpaper.thumbnailPath,
+
+      videoPath: wallpaper.videoPath,
+
+      videoPreviewPath: wallpaper.videoPreviewPath,
+
+      videoThumbnailPath: wallpaper.videoThumbnailPath,
+
+      variantPaths: wallpaper.wallpaperVariants.map((variant) => variant.url),
     });
 
     await prisma.wallpaperVariant.deleteMany({

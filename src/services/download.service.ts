@@ -29,7 +29,23 @@ const wallpaperInclude = {
   },
 };
 
+// ======================================================
+// MEDIA NORMALIZER
+// ======================================================
+
+const normalizeMediaType = (wallpaper: AnyObj) => {
+  const mediaType = String(
+    wallpaper.mediaType ??
+      wallpaper.media_type ??
+      (wallpaper.videoPath || wallpaper.video_path ? "VIDEO" : "IMAGE")
+  ).toUpperCase();
+
+  return mediaType === "VIDEO" ? "VIDEO" : "IMAGE";
+};
+
 const normalizeWallpaperMedia = (wallpaper: AnyObj): AnyObj => {
+  const mediaType = normalizeMediaType(wallpaper);
+
   const imageUrl =
     wallpaper.imageUrl ??
     wallpaper.image_url ??
@@ -44,17 +60,74 @@ const normalizeWallpaperMedia = (wallpaper: AnyObj): AnyObj => {
     wallpaper.thumbnail_url ??
     wallpaper.thumbnailPath ??
     wallpaper.thumbnail_path ??
+    wallpaper.videoThumbnailPath ??
+    wallpaper.video_thumbnail_path ??
+    wallpaper.videoPreviewPath ??
+    wallpaper.video_preview_path ??
     wallpaper.displayPath ??
     wallpaper.display_path ??
     imageUrl ??
     null;
 
+  const videoUrl =
+    wallpaper.videoUrl ??
+    wallpaper.video_url ??
+    wallpaper.videoPath ??
+    wallpaper.video_path ??
+    null;
+
+  const videoPreviewUrl =
+    wallpaper.videoPreviewUrl ??
+    wallpaper.video_preview_url ??
+    wallpaper.videoPreviewPath ??
+    wallpaper.video_preview_path ??
+    wallpaper.displayPath ??
+    wallpaper.display_path ??
+    imageUrl ??
+    null;
+
+  const videoThumbnailUrl =
+    wallpaper.videoThumbnailUrl ??
+    wallpaper.video_thumbnail_url ??
+    wallpaper.videoThumbnailPath ??
+    wallpaper.video_thumbnail_path ??
+    thumbnailUrl ??
+    null;
+
+  const downloadUrl =
+    mediaType === "VIDEO"
+      ? videoUrl ?? videoPreviewUrl ?? imageUrl ?? thumbnailUrl
+      : wallpaper.originalPath ??
+        wallpaper.original_path ??
+        wallpaper.displayPath ??
+        wallpaper.display_path ??
+        imageUrl ??
+        thumbnailUrl;
+
   return {
     ...wallpaper,
+
+    mediaType,
+
+    isVideo: mediaType === "VIDEO",
+
     imageUrl,
+
     thumbnailUrl,
+
+    videoUrl,
+
+    videoPreviewUrl,
+
+    videoThumbnailUrl,
+
+    downloadUrl,
   };
 };
+
+// ======================================================
+// LOOKUPS
+// ======================================================
 
 const getUser = async (userId: string) => {
   const user = await prisma.user.findUnique({
@@ -93,6 +166,7 @@ const getWallpaper = async (wallpaperId: string): Promise<AnyObj> => {
     where: {
       id: wallpaperId,
     },
+
     include: wallpaperInclude,
   });
 
@@ -113,21 +187,15 @@ const getWallpaper = async (wallpaperId: string): Promise<AnyObj> => {
   return normalizeWallpaperMedia(wallpaperRecord);
 };
 
-const isPremiumActive = (
-  premiumUntil: Date | null,
-  isPremium: boolean,
-) => {
-  return Boolean(
-    isPremium &&
-      premiumUntil !== null &&
-      premiumUntil > new Date(),
-  );
+// ======================================================
+// LIMITS / PERMISSIONS
+// ======================================================
+
+const isPremiumActive = (premiumUntil: Date | null, isPremium: boolean) => {
+  return Boolean(isPremium && premiumUntil !== null && premiumUntil > new Date());
 };
 
-const resetUserDailyLimit = async (
-  userId: string,
-  lastReset: Date | null,
-) => {
+const resetUserDailyLimit = async (userId: string, lastReset: Date | null) => {
   const today = new Date().toDateString();
 
   if (lastReset?.toDateString() !== today) {
@@ -135,6 +203,7 @@ const resetUserDailyLimit = async (
       where: {
         id: userId,
       },
+
       data: {
         dailyDownloadCount: 0,
         lastDownloadReset: new Date(),
@@ -148,6 +217,7 @@ const resetUserDailyLimit = async (
     where: {
       id: userId,
     },
+
     select: {
       dailyDownloadCount: true,
     },
@@ -156,10 +226,7 @@ const resetUserDailyLimit = async (
   return user?.dailyDownloadCount ?? 0;
 };
 
-const resetGuestDailyLimit = async (
-  guestId: string,
-  lastReset: Date | null,
-) => {
+const resetGuestDailyLimit = async (guestId: string, lastReset: Date | null) => {
   const today = new Date().toDateString();
 
   if (lastReset?.toDateString() !== today) {
@@ -167,6 +234,7 @@ const resetGuestDailyLimit = async (
       where: {
         id: guestId,
       },
+
       data: {
         dailyDownloadCount: 0,
         lastDownloadReset: new Date(),
@@ -180,6 +248,7 @@ const resetGuestDailyLimit = async (
     where: {
       id: guestId,
     },
+
     select: {
       dailyDownloadCount: true,
     },
@@ -201,9 +270,7 @@ const checkDownloadPermission = ({
 }) => {
   if (wallpaperPremium) {
     if (isGuest) {
-      throw ApiError.forbidden(
-        "Please sign in to download premium wallpapers.",
-      );
+      throw ApiError.forbidden("Please sign in to download premium wallpapers.");
     }
 
     if (!premiumActive) {
@@ -213,10 +280,14 @@ const checkDownloadPermission = ({
 
   if (!premiumActive && dailyCount >= FREE_DAILY_LIMIT) {
     throw ApiError.forbidden(
-      `Daily free download limit (${FREE_DAILY_LIMIT}) reached.`,
+      `Daily free download limit (${FREE_DAILY_LIMIT}) reached.`
     );
   }
 };
+
+// ======================================================
+// RECORD TRANSACTION
+// ======================================================
 
 const recordTransaction = async ({
   userId,
@@ -247,6 +318,7 @@ const recordTransaction = async ({
       where: {
         id: wallpaperId,
       },
+
       data: {
         downloadCount: {
           increment: 1,
@@ -259,6 +331,7 @@ const recordTransaction = async ({
         where: {
           id: userId,
         },
+
         data: {
           dailyDownloadCount: {
             increment: 1,
@@ -272,6 +345,7 @@ const recordTransaction = async ({
         where: {
           id: guestId,
         },
+
         data: {
           dailyDownloadCount: {
             increment: 1,
@@ -284,12 +358,74 @@ const recordTransaction = async ({
   });
 };
 
+// ======================================================
+// RESPONSE MAPPER
+// ======================================================
+
+const buildDownloadResponse = (download: AnyObj, wallpaper: AnyObj) => {
+  const normalizedWallpaper = normalizeWallpaperMedia(wallpaper);
+
+  return {
+    ...download,
+
+    wallpaperId: normalizedWallpaper.id,
+
+    mediaType: normalizedWallpaper.mediaType,
+
+    isVideo: normalizedWallpaper.isVideo,
+
+    downloadUrl: normalizedWallpaper.downloadUrl,
+
+    imageUrl: normalizedWallpaper.imageUrl ?? normalizedWallpaper.downloadUrl,
+
+    thumbnailUrl:
+      normalizedWallpaper.thumbnailUrl ??
+      normalizedWallpaper.imageUrl ??
+      normalizedWallpaper.videoThumbnailUrl ??
+      normalizedWallpaper.downloadUrl,
+
+    videoUrl: normalizedWallpaper.videoUrl,
+
+    videoPreviewUrl: normalizedWallpaper.videoPreviewUrl,
+
+    videoThumbnailUrl: normalizedWallpaper.videoThumbnailUrl,
+
+    durationSeconds:
+      normalizedWallpaper.durationSeconds ??
+      normalizedWallpaper.duration_seconds ??
+      null,
+
+    videoSize:
+      normalizedWallpaper.videoSize ?? normalizedWallpaper.video_size ?? null,
+
+    mimeType: normalizedWallpaper.mimeType ?? normalizedWallpaper.mime_type ?? null,
+
+    extension: normalizedWallpaper.extension ?? null,
+
+    quality: normalizedWallpaper.quality ?? "4K",
+
+    isPremium: Boolean(normalizedWallpaper.isPremium),
+
+    downloadCount:
+      normalizedWallpaper.downloadCount ??
+      normalizedWallpaper.download_count ??
+      normalizedWallpaper._count?.downloadsHistory ??
+      0,
+
+    favoriteCount:
+      normalizedWallpaper.favoriteCount ??
+      normalizedWallpaper.favorite_count ??
+      normalizedWallpaper._count?.favorites ??
+      0,
+  };
+};
+
+// ======================================================
+// SERVICE
+// ======================================================
+
 export const downloadService = {
-  async record({
-    wallpaperId,
-    userId,
-    guestId,
-  }: RecordDownloadInput) {
+  async record({ wallpaperId, userId, guestId }: RecordDownloadInput) {
     if (!wallpaperId) {
       throw ApiError.badRequest("Wallpaper ID is required.");
     }
@@ -308,15 +444,9 @@ export const downloadService = {
     if (userId) {
       const user = await getUser(userId);
 
-      premiumActive = isPremiumActive(
-        user.premiumUntil,
-        user.isPremium,
-      );
+      premiumActive = isPremiumActive(user.premiumUntil, user.isPremium);
 
-      dailyCount = await resetUserDailyLimit(
-        user.id,
-        user.lastDownloadReset,
-      );
+      dailyCount = await resetUserDailyLimit(user.id, user.lastDownloadReset);
 
       checkDownloadPermission({
         isGuest: false,
@@ -329,10 +459,7 @@ export const downloadService = {
     } else {
       const guest = await getGuest(guestId!);
 
-      dailyCount = await resetGuestDailyLimit(
-        guest.id,
-        guest.lastDownloadReset,
-      );
+      dailyCount = await resetGuestDailyLimit(guest.id, guest.lastDownloadReset);
 
       checkDownloadPermission({
         isGuest: true,
@@ -353,66 +480,28 @@ export const downloadService = {
       incrementGuest,
     });
 
-    const downloadUrl =
-      wallpaper.originalPath ??
-      wallpaper.original_path ??
-      wallpaper.displayPath ??
-      wallpaper.display_path ??
-      wallpaper.imageUrl ??
-      wallpaper.thumbnailUrl ??
-      null;
-
-    return {
-      ...download,
-
-      wallpaperId: wallpaper.id,
-
-      downloadUrl,
-
-      imageUrl: wallpaper.imageUrl ?? downloadUrl,
-
-      thumbnailUrl:
-        wallpaper.thumbnailUrl ??
-        wallpaper.imageUrl ??
-        downloadUrl,
-
-      quality: wallpaper.quality ?? "4K",
-
-      isPremium: Boolean(wallpaper.isPremium),
-
-      downloadCount:
-        wallpaper.downloadCount ??
-        wallpaper.download_count ??
-        wallpaper._count?.downloadsHistory ??
-        0,
-
-      favoriteCount:
-        wallpaper.favoriteCount ??
-        wallpaper.favorite_count ??
-        wallpaper._count?.favorites ??
-        0,
-    };
+    return buildDownloadResponse(download as AnyObj, wallpaper);
   },
 
-  async list(
-    userId: string,
-    limit: number,
-    offset: number,
-  ) {
+  async list(userId: string, limit: number, offset: number) {
     const [downloads, total] = await Promise.all([
       prisma.download.findMany({
         where: {
           userId,
         },
+
         include: {
           wallpaper: {
             include: wallpaperInclude,
           },
         },
+
         orderBy: {
           createdAt: "desc",
         },
+
         skip: offset,
+
         take: limit,
       }),
 
@@ -425,9 +514,7 @@ export const downloadService = {
 
     return {
       items: downloads.map((download) => {
-        const wallpaper = normalizeWallpaperMedia(
-          download.wallpaper as AnyObj,
-        );
+        const wallpaper = normalizeWallpaperMedia(download.wallpaper as AnyObj);
 
         return {
           ...wallpaper,
@@ -435,6 +522,31 @@ export const downloadService = {
           downloadedAt: download.createdAt,
 
           downloadQuality: download.quality,
+
+          mediaType: wallpaper.mediaType,
+
+          isVideo: wallpaper.isVideo,
+
+          downloadUrl: wallpaper.downloadUrl,
+
+          imageUrl: wallpaper.imageUrl,
+
+          thumbnailUrl: wallpaper.thumbnailUrl,
+
+          videoUrl: wallpaper.videoUrl,
+
+          videoPreviewUrl: wallpaper.videoPreviewUrl,
+
+          videoThumbnailUrl: wallpaper.videoThumbnailUrl,
+
+          durationSeconds:
+            wallpaper.durationSeconds ?? wallpaper.duration_seconds ?? null,
+
+          videoSize: wallpaper.videoSize ?? wallpaper.video_size ?? null,
+
+          mimeType: wallpaper.mimeType ?? wallpaper.mime_type ?? null,
+
+          extension: wallpaper.extension ?? null,
 
           downloadCount:
             wallpaper.downloadCount ??

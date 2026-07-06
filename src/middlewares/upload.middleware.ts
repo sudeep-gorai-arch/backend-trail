@@ -1,27 +1,49 @@
 import multer from "multer";
 
 // ===================================================
-// IMAGE FILTER
+// ALLOWED MIME TYPES
 // ===================================================
 
-const imageFilter: multer.Options["fileFilter"] = (_req, file, cb) => {
-  const allowed = [
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-    "image/jpg",
-    "image/avif",
-  ];
+const ALLOWED_IMAGE_MIME_TYPES = new Set([
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+  "image/avif",
+]);
 
-  if (allowed.includes(file.mimetype)) {
+const ALLOWED_VIDEO_MIME_TYPES = new Set([
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-m4v",
+  "video/m4v",
+]);
+
+// ===================================================
+// FILE FILTER
+// ===================================================
+
+const mediaFilter: multer.Options["fileFilter"] = (_req, file, cb) => {
+  const mimetype = String(file.mimetype || "").toLowerCase();
+
+  if (
+    ALLOWED_IMAGE_MIME_TYPES.has(mimetype) ||
+    ALLOWED_VIDEO_MIME_TYPES.has(mimetype)
+  ) {
     cb(null, true);
-  } else {
-    cb(new Error("Only image files are allowed."));
+    return;
   }
+
+  cb(
+    new Error(
+      "Only image files or video wallpaper files are allowed. Supported images: JPG, PNG, WEBP, AVIF. Supported videos: MP4, WEBM, MOV, M4V."
+    )
+  );
 };
 
 // ===================================================
-// MEMORY STORAGE FOR R2
+// MEMORY STORAGE FOR R2 / PROCESSING
 // ===================================================
 
 const storage = multer.memoryStorage();
@@ -32,8 +54,10 @@ const storage = multer.memoryStorage();
 
 export const upload = multer({
   storage,
-  fileFilter: imageFilter,
+
+  fileFilter: mediaFilter,
+
   limits: {
-    fileSize: 25 * 1024 * 1024,
+    fileSize: 120 * 1024 * 1024,
   },
 });

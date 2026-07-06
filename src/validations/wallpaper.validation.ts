@@ -1,19 +1,13 @@
 import { z } from "zod";
 
-import { WallpaperQuality } from "@prisma/client";
+import { WallpaperMediaType, WallpaperQuality } from "@prisma/client";
 
 // ======================================
 // BOOLEAN HELPERS
 // ======================================
 
-function parseBooleanInput(
-  value: unknown
-): boolean | undefined {
-  if (
-    value === undefined ||
-    value === null ||
-    value === ""
-  ) {
+function parseBooleanInput(value: unknown): boolean | undefined {
+  if (value === undefined || value === null || value === "") {
     return undefined;
   }
 
@@ -48,25 +42,100 @@ function parseBooleanInput(
   return undefined;
 }
 
-const optionalBoolean = z.preprocess(
-  parseBooleanInput,
-  z.boolean().optional()
+const optionalBoolean = z.preprocess(parseBooleanInput, z.boolean().optional());
+
+const requiredBoolean = z.preprocess(parseBooleanInput, z.boolean());
+
+const defaultFalseBoolean = z.preprocess((value) => {
+  const parsed = parseBooleanInput(value);
+
+  return parsed === undefined ? false : parsed;
+}, z.boolean());
+
+// ======================================
+// NUMBER HELPERS
+// ======================================
+
+function parseOptionalNumberInput(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    return parseOptionalNumberInput(value[0]);
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+const optionalPositiveNumber = z.preprocess(
+  parseOptionalNumberInput,
+  z.number().positive().optional()
 );
 
-const requiredBoolean = z.preprocess(
-  parseBooleanInput,
-  z.boolean()
+const optionalNonNegativeNumber = z.preprocess(
+  parseOptionalNumberInput,
+  z.number().min(0).optional()
 );
 
-const defaultFalseBoolean = z.preprocess(
+// ======================================
+// TAG HELPERS
+// ======================================
+
+function parseTagsInput(value: unknown): string[] {
+  if (value === undefined || value === null || value === "") {
+    return [];
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .flatMap((item) => parseTagsInput(item))
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+      return [];
+    }
+
+    try {
+      const parsed = JSON.parse(trimmed);
+
+      if (Array.isArray(parsed)) {
+        return parseTagsInput(parsed);
+      }
+    } catch {
+      // Not JSON, continue as comma-separated text
+    }
+
+    return trimmed
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  return [String(value).trim()].filter(Boolean);
+}
+
+const tagsArray = z.preprocess(
+  parseTagsInput,
+  z.array(z.string().trim().min(1)).default([])
+);
+
+const optionalTagsArray = z.preprocess(
   (value) => {
-    const parsed = parseBooleanInput(value);
+    if (value === undefined || value === null || value === "") {
+      return undefined;
+    }
 
-    return parsed === undefined
-      ? false
-      : parsed;
+    return parseTagsInput(value);
   },
-  z.boolean()
+  z.array(z.string().trim().min(1)).optional()
 );
 
 // ======================================
@@ -86,18 +155,9 @@ export const wallpaperSlugParams = z.object({
 // ======================================
 
 export const wallpaperListQuery = z.object({
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(100)
-    .default(20),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
 
-  offset: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .default(0),
+  offset: z.coerce.number().int().min(0).default(0),
 
   search: z.string().trim().optional(),
 
@@ -109,16 +169,12 @@ export const wallpaperListQuery = z.object({
 
   active: optionalBoolean,
 
+  mediaType: z.nativeEnum(WallpaperMediaType).optional(),
+
   quality: z.nativeEnum(WallpaperQuality).optional(),
 
   sort: z
-    .enum([
-      "latest",
-      "popular",
-      "downloads",
-      "likes",
-      "featured",
-    ])
+    .enum(["latest", "popular", "downloads", "likes", "featured"])
     .default("latest"),
 });
 
@@ -127,41 +183,31 @@ export const wallpaperListQuery = z.object({
 // ======================================
 
 export const createWallpaperBody = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(2)
-    .max(200),
+  title: z.string().trim().min(2).max(200),
 
-  slug: z
-    .string()
-    .trim()
-    .max(200)
-    .optional(),
+  slug: z.string().trim().max(200).optional(),
 
-  description: z
-    .string()
-    .trim()
-    .max(1000)
-    .optional(),
+  description: z.string().trim().max(1000).optional(),
 
   categoryId: z.string().uuid(),
 
-  quality: z
-    .nativeEnum(WallpaperQuality)
-    .default(WallpaperQuality.UHD_4K),
+  mediaType: z.nativeEnum(WallpaperMediaType).optional(),
+
+  quality: z.nativeEnum(WallpaperQuality).default(WallpaperQuality.UHD_4K),
 
   isPremium: defaultFalseBoolean,
 
   isFeatured: defaultFalseBoolean,
 
-  featuredOrder: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .default(0),
+  featuredOrder: z.coerce.number().int().min(0).default(0),
 
-  tags: z.array(z.string()).default([]),
+  durationSeconds: optionalPositiveNumber,
+
+  videoBitrate: optionalNonNegativeNumber,
+
+  videoFps: optionalPositiveNumber,
+
+  tags: tagsArray,
 });
 
 // ======================================
@@ -169,47 +215,33 @@ export const createWallpaperBody = z.object({
 // ======================================
 
 export const updateWallpaperBody = z.object({
-  title: z
-    .string()
-    .trim()
-    .min(2)
-    .max(200)
-    .optional(),
+  title: z.string().trim().min(2).max(200).optional(),
 
-  slug: z
-    .string()
-    .trim()
-    .max(200)
-    .optional(),
+  slug: z.string().trim().max(200).optional(),
 
-  description: z
-    .string()
-    .trim()
-    .max(1000)
-    .optional(),
+  description: z.string().trim().max(1000).optional(),
 
-  categoryId: z
-    .string()
-    .uuid()
-    .optional(),
+  categoryId: z.string().uuid().optional(),
 
-  quality: z
-    .nativeEnum(WallpaperQuality)
-    .optional(),
+  mediaType: z.nativeEnum(WallpaperMediaType).optional(),
+
+  quality: z.nativeEnum(WallpaperQuality).optional(),
 
   isPremium: optionalBoolean,
 
   isFeatured: optionalBoolean,
 
-  featuredOrder: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .optional(),
+  featuredOrder: z.coerce.number().int().min(0).optional(),
 
   active: optionalBoolean,
 
-  tags: z.array(z.string()).optional(),
+  durationSeconds: optionalPositiveNumber,
+
+  videoBitrate: optionalNonNegativeNumber,
+
+  videoFps: optionalPositiveNumber,
+
+  tags: optionalTagsArray,
 });
 
 // ======================================
@@ -217,10 +249,7 @@ export const updateWallpaperBody = z.object({
 // ======================================
 
 export const updateFeaturedOrderBody = z.object({
-  featuredOrder: z.coerce
-    .number()
-    .int()
-    .min(0),
+  featuredOrder: z.coerce.number().int().min(0),
 });
 
 // ======================================
@@ -236,9 +265,7 @@ export const wallpaperStatusBody = z.object({
 // ======================================
 
 export const wallpaperDownloadBody = z.object({
-  quality: z
-    .nativeEnum(WallpaperQuality)
-    .optional(),
+  quality: z.nativeEnum(WallpaperQuality).optional(),
 });
 
 // ======================================
@@ -246,21 +273,9 @@ export const wallpaperDownloadBody = z.object({
 // ======================================
 
 export const wallpaperSearchQuery = z.object({
-  q: z
-    .string()
-    .trim()
-    .min(1),
+  q: z.string().trim().min(1),
 
-  limit: z.coerce
-    .number()
-    .int()
-    .min(1)
-    .max(50)
-    .default(20),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
 
-  offset: z.coerce
-    .number()
-    .int()
-    .min(0)
-    .default(0),
+  offset: z.coerce.number().int().min(0).default(0),
 });

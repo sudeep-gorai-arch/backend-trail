@@ -36,20 +36,14 @@ router.get(
 // GET /api/wallpapers/featured
 // ======================================================
 
-router.get(
-  "/featured",
-  asyncHandler(wallpaperController.featured)
-);
+router.get("/featured", asyncHandler(wallpaperController.featured));
 
 // ======================================================
 // TRENDING
 // GET /api/wallpapers/trending
 // ======================================================
 
-router.get(
-  "/trending",
-  asyncHandler(wallpaperController.trending)
-);
+router.get("/trending", asyncHandler(wallpaperController.trending));
 
 // ======================================================
 // TOP WEEK
@@ -64,20 +58,14 @@ router.get(
 // categorySlug=abstract
 // ======================================================
 
-router.get(
-  "/top-week",
-  asyncHandler(wallpaperController.topWeek)
-);
+router.get("/top-week", asyncHandler(wallpaperController.topWeek));
 
 // ======================================================
 // PREMIUM
 // GET /api/wallpapers/premium
 // ======================================================
 
-router.get(
-  "/premium",
-  asyncHandler(wallpaperController.premium)
-);
+router.get("/premium", asyncHandler(wallpaperController.premium));
 
 // ======================================================
 // SEARCH
@@ -167,12 +155,36 @@ router.get(
 // CREATE
 // POST /api/wallpapers
 // multipart/form-data
-// image => file
+//
+// Supported fields:
+// image => static wallpaper image
+// video => video wallpaper file
+// previewImage => optional image preview for video wallpaper
+// thumbnail => optional thumbnail image for video wallpaper
+//
+// Old image-only upload remains supported.
 // ======================================================
 
 router.post(
   "/",
-  upload.single("image"),
+  upload.fields([
+    {
+      name: "image",
+      maxCount: 1,
+    },
+    {
+      name: "video",
+      maxCount: 1,
+    },
+    {
+      name: "previewImage",
+      maxCount: 1,
+    },
+    {
+      name: "thumbnail",
+      maxCount: 1,
+    },
+  ]),
   validate({
     body: createWallpaperBody,
   }),
@@ -183,12 +195,36 @@ router.post(
 // BATCH UPLOAD
 // POST /api/wallpapers/batch
 // multipart/form-data
-// images => files
+//
+// Supported fields:
+// images => static wallpaper image files
+// videos => video wallpaper files
+// previewImages => optional preview image files
+// thumbnails => optional thumbnail image files
+//
+// Old image-only batch upload remains supported.
 // ======================================================
 
 router.post(
   "/batch",
-  upload.array("images", 50),
+  upload.fields([
+    {
+      name: "images",
+      maxCount: 50,
+    },
+    {
+      name: "videos",
+      maxCount: 50,
+    },
+    {
+      name: "previewImages",
+      maxCount: 50,
+    },
+    {
+      name: "thumbnails",
+      maxCount: 50,
+    },
+  ]),
   asyncHandler(wallpaperController.batchUpload)
 );
 

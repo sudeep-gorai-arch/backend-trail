@@ -159,16 +159,31 @@ model Wallpaper {
 
   category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
-  // Images
+  // Media type
+  mediaType WallpaperMediaType @default(IMAGE) @map("media_type")
 
+  // Images / fallback preview paths
   originalPath String @map("original_path")
 
   displayPath String @map("display_path")
 
   thumbnailPath String @map("thumbnail_path")
 
-  // Metadata
+  // Video paths
+  videoPath String? @map("video_path")
 
+  videoPreviewPath String? @map("video_preview_path")
+
+  videoThumbnailPath String? @map("video_thumbnail_path")
+
+  // Video metadata
+  durationSeconds Int? @map("duration_seconds")
+
+  videoBitrate Int? @map("video_bitrate")
+
+  videoFps Float? @map("video_fps")
+
+  // Metadata
   originalName String @map("original_name")
 
   fileName String @map("file_name")
@@ -178,7 +193,6 @@ model Wallpaper {
   extension String
 
   // Dimensions
-
   width Int
 
   height Int
@@ -186,21 +200,20 @@ model Wallpaper {
   aspectRatio Float @map("aspect_ratio")
 
   // File size
-
   originalSize Int @map("original_size")
 
   displaySize Int @map("display_size")
 
   thumbnailSize Int @map("thumbnail_size")
 
-  // Image quality
+  videoSize Int? @map("video_size")
 
+  // Image/video quality
   quality WallpaperQuality @default(UHD_4K)
 
   format String @default("webp")
 
   // Premium
-
   isPremium Boolean @default(false)
 
   isFeatured Boolean @default(false)
@@ -212,7 +225,6 @@ model Wallpaper {
   active Boolean @default(true)
 
   // Analytics
-
   likeCount Int @default(0)
 
   downloadCount Int @default(0)
@@ -220,7 +232,6 @@ model Wallpaper {
   viewCount Int @default(0)
 
   // Search
-
   dominantColor String? @map("dominant_color")
 
   searchableText String? @map("searchable_text")
@@ -249,18 +260,25 @@ model Wallpaper {
 
   @@index([categoryId])
   @@index([active])
+  @@index([mediaType])
   @@index([isFeatured])
   @@index([isPremium])
   @@index([downloadCount])
   @@index([likeCount])
   @@index([slug])
   @@index([active, categoryId])
+  @@index([active, mediaType])
   @@index([active, isPremium])
   @@index([active, isFeatured])
   @@index([categoryId, createdAt])
   @@index([downloadCount, likeCount])
   @@index([status])
   @@map("wallpapers")
+}
+
+enum WallpaperMediaType {
+  IMAGE
+  VIDEO
 }
 
 enum WallpaperQuality {
@@ -325,6 +343,7 @@ model WallpaperTag {
 }
 
 // ================= DOWNLOAD =================
+
 model Download {
   id String @id @default(uuid()) @db.Uuid
 
@@ -410,6 +429,10 @@ enum ImageFormat {
   JPG
   PNG
   AVIF
+  MP4
+  WEBM
+  MOV
+  M4V
 }
 
 enum VariantType {
@@ -426,6 +449,12 @@ enum VariantType {
   UHD
 
   ORIGINAL
+
+  VIDEO
+
+  VIDEO_PREVIEW
+
+  VIDEO_THUMBNAIL
 }
 
 // ================= SUBSCRIPTION =================
