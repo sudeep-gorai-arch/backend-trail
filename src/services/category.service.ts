@@ -72,7 +72,8 @@ const categoryInclude = {
 const mapCategory = (
   category: Prisma.CategoryGetPayload<{
     include: typeof categoryInclude;
-  }>
+  }>,
+  premiumCount = 0
 ) => ({
   id: category.id,
 
@@ -90,7 +91,11 @@ const mapCategory = (
 
   thumbnailUrl: category.thumbnailUrl,
 
-  wallpaperCount: category.wallpaperCount,
+  wallpaperCount: category._count.wallpapers,
+
+  count: category._count.wallpapers,
+
+  premiumCount,
 
   active: category.active,
 
@@ -99,8 +104,6 @@ const mapCategory = (
   createdAt: category.createdAt,
 
   updatedAt: category.updatedAt,
-
-  count: category._count.wallpapers,
 });
 
 // =====================================================
@@ -151,23 +154,54 @@ async function ensureUnique(
 
 export const categoryService = {
 
-  async list() {
-    const categories =
-      await prisma.category.findMany({
-        include: categoryInclude,
+  async list(filters?: {
+    active?: boolean;
+    premiumOnly?: boolean;
+  }) {
+    const categories = await prisma.category.findMany({
+      where: {
+        ...(filters?.active !== undefined && {
+          active: filters.active,
+        }),
+      },
 
-        orderBy: [
-          {
-            sortOrder: "asc",
-          },
-          {
-            name: "asc",
-          },
-        ],
-      });
+      include: categoryInclude,
 
-    return categories.map(
-      mapCategory
+      orderBy: [
+        {
+          sortOrder: "asc",
+        },
+        {
+          name: "asc",
+        },
+      ],
+    });
+
+    const premiumCounts = await prisma.wallpaper.groupBy({
+      by: ["categoryId"],
+
+      where: {
+        isPremium: true,
+        active: true,
+      },
+
+      _count: {
+        _all: true,
+      },
+    });
+
+    const premiumMap = new Map<string, number>(
+      premiumCounts.map(item => [
+        item.categoryId,
+        item._count._all,
+      ])
+    );
+
+    return categories.map(category =>
+      mapCategory(
+        category,
+        premiumMap.get(category.id) ?? 0
+      )
     );
   },
 

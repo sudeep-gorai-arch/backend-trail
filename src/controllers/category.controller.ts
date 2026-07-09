@@ -47,12 +47,26 @@ export const categoryController = {
   // LIST
   // ======================================
 
-  async list(req: Request, res: Response) {
-    const categories = await categoryService.list();
+  async list(
+    req: Request,
+    res: Response
+  ) {
+    const categories =
+      await categoryService.list({
+        active:
+          req.query.active === undefined
+            ? undefined
+            : req.query.active === "true",
+
+        premiumOnly:
+          req.query.premiumOnly === "true",
+      });
 
     return response.success(
       res,
-      categories.map((category) => toCategoryDTO(req, category))
+      categories.map(category =>
+        toCategoryDTO(req, category)
+      )
     );
   },
 

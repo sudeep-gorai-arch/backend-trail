@@ -25,7 +25,13 @@ export const toCategoryDTO = (
         ? absoluteUrl(req, category.thumbnailUrl)
         : null,
 
-    wallpaperCount: category.wallpaperCount,
+    wallpaperCount:
+        category.wallpaperCount ?? category.count ?? 0,
+
+    count:
+        category.count ?? category.wallpaperCount ?? 0,
+
+    premiumCount: category.premiumCount ?? 0,
 
     sortOrder: category.sortOrder,
 
@@ -33,5 +39,5 @@ export const toCategoryDTO = (
 
     createdAt: category.createdAt,
 
-    updatedAt: category.updatedAt
+    updatedAt: category.updatedAt,
 });
