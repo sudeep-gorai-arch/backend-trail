@@ -1,5 +1,9 @@
 import prisma from "../config/prisma";
 import { ApiError } from "../utils/ApiError";
+import {
+  Prisma,
+  WallpaperMediaType,
+} from "@prisma/client";
 
 type AnyObj = Record<string, any>;
 
@@ -168,6 +172,72 @@ export const favoriteService = {
     };
   },
 
+  async live(userId: string, limit: number, offset: number) {
+    await getUser(userId);
+
+    const where: Prisma.FavoriteWhereInput = {
+      userId,
+      wallpaper: {
+        is: {
+          active: true,
+          mediaType: WallpaperMediaType.VIDEO,
+        },
+      },
+    };
+
+    const [favorites, total] = await Promise.all([
+      prisma.favorite.findMany({
+        where,
+
+        include: {
+          wallpaper: {
+            include: wallpaperInclude,
+          },
+        },
+
+        orderBy: {
+          createdAt: "desc",
+        },
+
+        skip: offset,
+        take: limit,
+      }),
+
+      prisma.favorite.count({
+        where,
+      }),
+    ]);
+
+    return {
+      items: favorites.map(favorite => {
+        const wallpaper = normalizeWallpaperMedia(
+          favorite.wallpaper as AnyObj,
+        );
+
+        return {
+          ...wallpaper,
+          isFavorite: true,
+
+          favoriteCount:
+            wallpaper.favoriteCount ??
+            wallpaper.favorite_count ??
+            wallpaper._count?.favorites ??
+            0,
+
+          downloadCount:
+            wallpaper.downloadCount ??
+            wallpaper.download_count ??
+            wallpaper._count?.downloadsHistory ??
+            0,
+
+          favoritedAt: favorite.createdAt,
+        };
+      }),
+
+      total,
+    };
+  },
+
   async add(userId: string, wallpaperId: string) {
     await getUser(userId);
     await getWallpaper(wallpaperId);
@@ -264,5 +334,39 @@ export const favoriteService = {
     await getWallpaper(wallpaperId);
 
     return getFavoriteStatus(userId, wallpaperId);
+  },
+
+  async sync(userId: string, wallpaperIds: string[]) {
+    await getUser(userId);
+
+    const uniqueIds = [...new Set(wallpaperIds)].filter(Boolean);
+
+    if (!uniqueIds.length) {
+      return {
+        synced: 0,
+      };
+    }
+
+    await prisma.$transaction(
+      uniqueIds.map(wallpaperId =>
+        prisma.favorite.upsert({
+          where: {
+            userId_wallpaperId: {
+              userId,
+              wallpaperId,
+            },
+          },
+          update: {},
+          create: {
+            userId,
+            wallpaperId,
+          },
+        }),
+      ),
+    );
+
+    return {
+      synced: uniqueIds.length,
+    };
   },
 };

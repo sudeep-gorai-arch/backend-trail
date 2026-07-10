@@ -31,6 +31,36 @@ export const favoriteController = {
     );
   },
 
+  async live(req: Request, res: Response) {
+    const { limit, offset } = req.query as unknown as {
+      limit: number;
+      offset: number;
+    };
+
+    const { items, total } =
+      await favoriteService.live(
+        req.user!.id,
+        limit,
+        offset,
+      );
+
+    response.success(
+      res,
+      items.map(wallpaper => ({
+        ...toWallpaperDTO(req, wallpaper),
+        isFavorite: true,
+      })),
+      {
+        pagination: buildPagination(
+          total,
+          limit,
+          offset,
+          items.length,
+        ),
+      },
+    );
+  },
+
   async add(req: Request, res: Response) {
     const { wallpaperId } = req.body as {
       wallpaperId: string;
@@ -82,5 +112,18 @@ export const favoriteController = {
     );
 
     response.success(res, result);
+  },
+
+  async sync(req: Request, res: Response) {
+    const { wallpaperIds } = req.body;
+
+    const result = await favoriteService.sync(
+      req.user!.id,
+      wallpaperIds ?? [],
+    );
+
+    response.success(res, result, {
+      message: "Favorites synced successfully.",
+    });
   },
 };

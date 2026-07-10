@@ -22,98 +22,82 @@ const router = Router();
 
 router.use(authenticate);
 
-// ======================================
-// LIST FAVORITES
-// GET /api/favorites
-// ======================================
-
+// LIST
 router.get(
   "/",
   validate({
     query: favoriteListQuery,
   }),
-  asyncHandler(favoriteController.list)
+  asyncHandler(favoriteController.list),
 );
 
-// ======================================
-// ADD FAVORITE
-// POST /api/favorites
-// Body: { wallpaperId }
-// ======================================
+// LIVE
+router.get(
+  "/live",
+  validate({
+    query: favoriteListQuery,
+  }),
+  asyncHandler(favoriteController.live),
+);
 
+// SYNC
+router.post(
+  "/sync",
+  asyncHandler(favoriteController.sync),
+);
+
+// ADD
 router.post(
   "/",
   validate({
     body: addFavoriteBody,
   }),
-  asyncHandler(favoriteController.add)
+  asyncHandler(favoriteController.add),
 );
 
-// ======================================
-// FAVORITE STATUS
-// GET /api/favorites/status/:wallpaperId
-// Used by mobile app when opening wallpaper details
-// ======================================
-
+// STATUS
 router.get(
   "/status/:wallpaperId",
   validate({
     params: favoriteParams,
   }),
-  asyncHandler(favoriteController.status)
+  asyncHandler(favoriteController.status),
 );
 
-// ======================================
-// TOGGLE FAVORITE
-// POST /api/favorites/toggle/:wallpaperId
-// Optional endpoint for one-click add/remove
-// ======================================
-
+// TOGGLE
 router.post(
   "/toggle/:wallpaperId",
   validate({
     params: favoriteParams,
   }),
-  asyncHandler(favoriteController.toggle)
+  asyncHandler(favoriteController.toggle),
 );
 
-// ======================================
-// BACKWARD COMPATIBILITY
-// GET /api/favorites/:wallpaperId/status
-// ======================================
-
+// BACKWARD STATUS
 router.get(
   "/:wallpaperId/status",
   validate({
     params: favoriteParams,
   }),
-  asyncHandler(favoriteController.status)
+  asyncHandler(favoriteController.status),
 );
 
-// ======================================
-// BACKWARD COMPATIBILITY
-// POST /api/favorites/:wallpaperId/toggle
-// ======================================
-
+// BACKWARD TOGGLE
 router.post(
   "/:wallpaperId/toggle",
   validate({
     params: favoriteParams,
   }),
-  asyncHandler(favoriteController.toggle)
+  asyncHandler(favoriteController.toggle),
 );
 
-// ======================================
-// REMOVE FAVORITE
-// DELETE /api/favorites/:wallpaperId
-// ======================================
-
+// REMOVE
 router.delete(
   "/:wallpaperId",
   validate({
     params: favoriteParams,
   }),
-  asyncHandler(favoriteController.remove)
+  asyncHandler(favoriteController.remove),
 );
 
 export default router;
