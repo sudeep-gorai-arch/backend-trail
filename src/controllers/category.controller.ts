@@ -51,16 +51,17 @@ export const categoryController = {
     req: Request,
     res: Response
   ) {
-    const categories =
-      await categoryService.list({
-        active:
-          req.query.active === undefined
-            ? undefined
-            : req.query.active === "true",
+    const categories = await categoryService.list({
+      active:
+        typeof req.query.active === "boolean"
+          ? req.query.active
+          : undefined,
 
-        premiumOnly:
-          req.query.premiumOnly === "true",
-      });
+      premiumOnly:
+        typeof req.query.premiumOnly === "boolean"
+          ? req.query.premiumOnly
+          : undefined,
+    });
 
     return response.success(
       res,
