@@ -35,7 +35,13 @@ export interface ListWallpaperParams {
 
   quality?: WallpaperQuality;
 
-  sort?: "latest" | "popular" | "downloads" | "likes" | "featured";
+  sort?:
+  | "latest"
+  | "popular"
+  | "downloads"
+  | "likes"
+  | "featured"
+  | "random";
 }
 
 export interface TopWeekWallpaperParams {
@@ -1173,10 +1179,10 @@ async function createVideoWallpaper(
 
   const preview = previewSourceFile
     ? await processWallpaperForR2(previewSourceFile, categoryFolder, slug, {
-        original: "video-previews/originals",
-        display: "video-previews/display",
-        thumbnail: "video-previews/thumbnails",
-      })
+      original: "video-previews/originals",
+      display: "video-previews/display",
+      thumbnail: "video-previews/thumbnails",
+    })
     : await processGeneratedPreviewForR2(categoryFolder, slug);
 
   const tags = parseStringArray(data.tags);
@@ -1308,7 +1314,6 @@ export const wallpaperService = {
   }: ListWallpaperParams) {
     const where: Prisma.WallpaperWhereInput = {
       deletedAt: null,
-
       active,
     };
 
@@ -1357,68 +1362,116 @@ export const wallpaperService = {
       where.quality = quality;
     }
 
+    // =====================================================
+    // RANDOM SORT
+    // =====================================================
+    if (sort === "random") {
+      const ids = await prisma.wallpaper.findMany({
+        where,
+        select: {
+          id: true,
+        },
+      });
+
+      // Fisher-Yates Shuffle
+      for (let i = ids.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [ids[i], ids[j]] = [ids[j], ids[i]];
+      }
+
+      const selectedIds = ids
+        .slice(offset, offset + limit)
+        .map(item => item.id);
+
+      const items = await prisma.wallpaper.findMany({
+        where: {
+          id: {
+            in: selectedIds,
+          },
+        },
+        include: wallpaperInclude,
+      });
+
+      // Preserve shuffled order
+      const itemMap = new Map(items.map(item => [item.id, item]));
+
+      const orderedItems = selectedIds
+        .map(id => itemMap.get(id))
+        .filter(
+          (
+            item
+          ): item is Prisma.WallpaperGetPayload<{
+            include: typeof wallpaperInclude;
+          }> => item !== undefined
+        );
+
+      return {
+        items: orderedItems.map(mapWallpaper),
+        total: ids.length,
+      };
+    }
+
+    // =====================================================
+    // NORMAL SORTS
+    // =====================================================
     const orderBy: Prisma.WallpaperOrderByWithRelationInput[] =
       sort === "popular"
         ? [
+          {
+            downloadCount: "desc",
+          },
+          {
+            likeCount: "desc",
+          },
+          {
+            createdAt: "desc",
+          },
+        ]
+        : sort === "downloads"
+          ? [
             {
               downloadCount: "desc",
-            },
-            {
-              likeCount: "desc",
             },
             {
               createdAt: "desc",
             },
           ]
-        : sort === "downloads"
-          ? [
+          : sort === "likes"
+            ? [
               {
-                downloadCount: "desc",
+                likeCount: "desc",
               },
               {
                 createdAt: "desc",
               },
             ]
-          : sort === "likes"
-            ? [
+            : sort === "featured"
+              ? [
                 {
-                  likeCount: "desc",
+                  featuredOrder: "asc",
+                },
+                {
+                  featuredAt: "desc",
                 },
                 {
                   createdAt: "desc",
                 },
               ]
-            : sort === "featured"
-              ? [
-                  {
-                    featuredOrder: "asc",
-                  },
-                  {
-                    featuredAt: "desc",
-                  },
-                  {
-                    createdAt: "desc",
-                  },
-                ]
               : [
-                  {
-                    featuredOrder: "asc",
-                  },
-                  {
-                    createdAt: "desc",
-                  },
-                ];
+                {
+                  featuredOrder: "asc",
+                },
+                {
+                  createdAt: "desc",
+                },
+              ];
 
     const [items, total] = await Promise.all([
       prisma.wallpaper.findMany({
         where,
-
         include: wallpaperInclude,
-
         orderBy,
-
         skip: offset,
-
         take: limit,
       }),
 
@@ -1429,7 +1482,6 @@ export const wallpaperService = {
 
     return {
       items: items.map(mapWallpaper),
-
       total,
     };
   },
@@ -1867,11 +1919,11 @@ export const wallpaperService = {
     const category = categoryChanged
       ? await getCategory(data.categoryId!)
       : {
-          id: existing.category.id,
-          name: existing.category.name,
-          slug: existing.category.slug,
-          folderName: existing.category.folderName,
-        };
+        id: existing.category.id,
+        name: existing.category.name,
+        slug: existing.category.slug,
+        folderName: existing.category.folderName,
+      };
 
     if (categoryChanged) {
       await decrementCategoryCount(existing.categoryId);

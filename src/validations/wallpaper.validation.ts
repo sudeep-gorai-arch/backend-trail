@@ -174,7 +174,7 @@ export const wallpaperListQuery = z.object({
   quality: z.nativeEnum(WallpaperQuality).optional(),
 
   sort: z
-    .enum(["latest", "popular", "downloads", "likes", "featured"])
+    .enum(["latest", "popular", "downloads", "likes", "featured","random"])
     .default("latest"),
 });
 
