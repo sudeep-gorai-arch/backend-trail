@@ -1317,6 +1317,8 @@ export const wallpaperService = {
       active,
     };
 
+    sort = "random";
+
     if (search) {
       where.OR = [
         {
@@ -1361,6 +1363,8 @@ export const wallpaperService = {
     if (quality !== undefined) {
       where.quality = quality;
     }
+
+    console.log("Sort =", sort);
 
     // =====================================================
     // RANDOM SORT

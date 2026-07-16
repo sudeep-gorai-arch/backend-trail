@@ -161,6 +161,7 @@ export const wallpaperController = {
       | "downloads"
       | "likes"
       | "featured"
+      | "random"
       | undefined;
 
     const { items, total } = await wallpaperService.list({
