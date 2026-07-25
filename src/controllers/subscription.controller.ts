@@ -1,10 +1,12 @@
 import { Request, Response } from 'express';
 
 import { subscriptionService } from '../services/subscription.service';
+import { googlePlayBillingService } from '../services/googlePlayBilling.service';
 
 import {
   createOrderBody,
   verifyPaymentBody,
+  verifyGooglePlayPurchaseBody,
 } from '../validations/subscription.validation';
 
 const getUserId = (req: Request) => {
@@ -44,6 +46,19 @@ export const subscriptionController = {
     });
   },
 
+  async verifyGooglePlayPurchase(req: Request, res: Response) {
+    const userId = getUserId(req);
+    const body = verifyGooglePlayPurchaseBody.parse(req.body);
+
+    const status = await googlePlayBillingService.verifyAndActivate(userId, body);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Google Play purchase verified successfully.',
+      data: status,
+    });
+  },
+
   async cancelSubscription(req: Request, res: Response) {
     const userId = getUserId(req);
 
@@ -64,6 +79,9 @@ export const subscriptionController = {
 
   async getStatus(req: Request, res: Response) {
     const userId = getUserId(req);
+
+    // Refresh renewals, cancellations and refunds before returning entitlement.
+    await googlePlayBillingService.syncActivePurchase(userId);
 
     const status = await subscriptionService.status(userId);
 

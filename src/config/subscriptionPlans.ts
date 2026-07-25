@@ -1,3 +1,5 @@
+import { env } from './env';
+
 export type PaidSubscriptionPlan =
   | 'MONTHLY'
   | 'QUARTERLY'
@@ -11,6 +13,7 @@ type PlanConfig = {
   amount: number;
   currency: 'INR';
   validityDays: number;
+  googlePlayProductId?: string;
 };
 
 export const SUBSCRIPTION_PLANS: Record<PaidSubscriptionPlan, PlanConfig> = {
@@ -21,6 +24,7 @@ export const SUBSCRIPTION_PLANS: Record<PaidSubscriptionPlan, PlanConfig> = {
     amount: 149,
     currency: 'INR',
     validityDays: 30,
+    googlePlayProductId: env.GOOGLE_PLAY_MONTHLY_PRODUCT_ID,
   },
 
   QUARTERLY: {
@@ -39,6 +43,7 @@ export const SUBSCRIPTION_PLANS: Record<PaidSubscriptionPlan, PlanConfig> = {
     amount: 399,
     currency: 'INR',
     validityDays: 365,
+    googlePlayProductId: env.GOOGLE_PLAY_YEARLY_PRODUCT_ID,
   },
 
   LIFETIME: {
@@ -48,5 +53,6 @@ export const SUBSCRIPTION_PLANS: Record<PaidSubscriptionPlan, PlanConfig> = {
     amount: 799,
     currency: 'INR',
     validityDays: 36500,
+    googlePlayProductId: env.GOOGLE_PLAY_LIFETIME_PRODUCT_ID,
   },
 };

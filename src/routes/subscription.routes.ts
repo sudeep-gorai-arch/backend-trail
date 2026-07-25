@@ -9,6 +9,7 @@ import { subscriptionController } from '../controllers/subscription.controller';
 import {
   createOrderBody,
   verifyPaymentBody,
+  verifyGooglePlayPurchaseBody,
 } from '../validations/subscription.validation';
 
 const router = Router();
@@ -50,6 +51,20 @@ router.post(
     body: verifyPaymentBody,
   }),
   asyncHandler(subscriptionController.verifyPayment),
+);
+
+
+// ======================================
+// VERIFY GOOGLE PLAY PURCHASE
+// POST /api/subscriptions/google-play/verify
+// ======================================
+
+router.post(
+  '/google-play/verify',
+  validate({
+    body: verifyGooglePlayPurchaseBody,
+  }),
+  asyncHandler(subscriptionController.verifyGooglePlayPurchase),
 );
 
 // ======================================

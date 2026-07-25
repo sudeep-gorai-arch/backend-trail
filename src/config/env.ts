@@ -38,6 +38,14 @@ const envSchema = z.object({
   RAZORPAY_KEY_SECRET: z.string(),
 
   RAZORPAY_WEBHOOK_SECRET: z.string(),
+
+  // Google Play Billing (service-account JSON may be stored directly or base64 encoded)
+  GOOGLE_PLAY_PACKAGE_NAME: z.string().default('com.flexiwalls.app'),
+  GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: z.string().optional(),
+  GOOGLE_PLAY_SERVICE_ACCOUNT_JSON_BASE64: z.string().optional(),
+  GOOGLE_PLAY_MONTHLY_PRODUCT_ID: z.string().default('flexiwalls_premium_monthly'),
+  GOOGLE_PLAY_YEARLY_PRODUCT_ID: z.string().default('flexiwalls_premium_yearly'),
+  GOOGLE_PLAY_LIFETIME_PRODUCT_ID: z.string().default('flexiwalls_premium_lifetime'),
   R2_ACCOUNT_ID: z.string(),
   R2_ACCESS_KEY_ID: z.string(),
   R2_SECRET_ACCESS_KEY: z.string(),

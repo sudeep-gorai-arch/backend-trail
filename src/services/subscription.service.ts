@@ -420,6 +420,12 @@ export const subscriptionService = {
       throw ApiError.notFound('No active premium subscription found.');
     }
 
+    if (activeSubscription.platform === SubscriptionPlatform.GOOGLE) {
+      throw ApiError.badRequest(
+        'Google Play subscriptions must be managed from the Google Play subscription center.',
+      );
+    }
+
     if (activeSubscription.plan === 'LIFETIME') {
       throw ApiError.badRequest('Lifetime plan does not have auto-renewal.');
     }
@@ -586,6 +592,7 @@ export const subscriptionService = {
       currency: plan.currency,
       validityDays: plan.validityDays,
       description: plan.description,
+      googlePlayProductId: plan.googlePlayProductId,
       displayPrice:
         plan.currency === 'INR'
           ? `₹${plan.amount.toLocaleString('en-IN')}`
