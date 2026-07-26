@@ -38,9 +38,35 @@ export const downloadController = {
     );
   },
 
+
+  async preflight(req: Request, res: Response) {
+    const { wallpaperId } = req.body as { wallpaperId: string };
+
+    const guestId = req.header("x-guest-id") ?? null;
+    const userId = req.user?.id ?? null;
+
+    const download = await downloadService.preflight({
+      wallpaperId,
+      userId,
+      guestId,
+    });
+
+    response.success(
+      res,
+      {
+        ...download,
+        downloadUrl: absoluteUrl(req, download.downloadUrl),
+      },
+      {
+        message: "Download allowed",
+      },
+    );
+  },
+
   async record(req: Request, res: Response) {
-    const { wallpaperId } = req.body as {
+    const { wallpaperId, downloadId } = req.body as {
       wallpaperId: string;
+      downloadId?: string;
     };
 
     const guestId = req.header("x-guest-id") ?? null;
@@ -50,6 +76,7 @@ export const downloadController = {
       wallpaperId,
       userId,
       guestId,
+      downloadId,
     });
 
     response.success(

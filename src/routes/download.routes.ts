@@ -29,8 +29,13 @@ const pageQuery = z.object({
     .default(0),
 });
 
+const preflightBody = z.object({
+  wallpaperId: z.string().uuid(),
+});
+
 const recordBody = z.object({
   wallpaperId: z.string().uuid(),
+  downloadId: z.string().uuid().optional(),
 });
 
 /*
@@ -54,6 +59,16 @@ DOWNLOAD WALLPAPER
 (GUEST OR LOGGED IN)
 ---------------------------------
 */
+
+
+router.post(
+  "/preflight",
+  optionalAuthenticate,
+  validate({
+    body: preflightBody,
+  }),
+  asyncHandler(downloadController.preflight),
+);
 
 router.post(
   "/",
