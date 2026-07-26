@@ -362,7 +362,11 @@ const recordTransaction = async ({
 // RESPONSE MAPPER
 // ======================================================
 
-const buildDownloadResponse = (download: AnyObj, wallpaper: AnyObj) => {
+const buildDownloadResponse = (
+  download: AnyObj,
+  wallpaper: AnyObj,
+  metadata: AnyObj = {},
+) => {
   const normalizedWallpaper = normalizeWallpaperMedia(wallpaper);
 
   return {
@@ -417,6 +421,8 @@ const buildDownloadResponse = (download: AnyObj, wallpaper: AnyObj) => {
       normalizedWallpaper.favorite_count ??
       normalizedWallpaper._count?.favorites ??
       0,
+
+    ...metadata,
   };
 };
 
@@ -480,7 +486,23 @@ export const downloadService = {
       incrementGuest,
     });
 
-    return buildDownloadResponse(download as AnyObj, wallpaper);
+    const guestUsage = !userId
+      ? {
+          isGuest: true,
+          dailyDownloadCount: dailyCount + 1,
+          dailyDownloadLimit: FREE_DAILY_LIMIT,
+          remainingDailyDownloads: Math.max(
+            FREE_DAILY_LIMIT - (dailyCount + 1),
+            0,
+          ),
+        }
+      : {};
+
+    return buildDownloadResponse(
+      download as AnyObj,
+      wallpaper,
+      guestUsage,
+    );
   },
 
   async list(userId: string, limit: number, offset: number) {
