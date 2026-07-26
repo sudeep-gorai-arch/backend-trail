@@ -3,6 +3,7 @@ import { Router } from "express";
 import { wallpaperController } from "../controllers/wallpaper.controller";
 
 import { upload } from "../middlewares/upload.middleware";
+import { optionalAuthenticate } from "../middlewares/auth.middleware";
 import { validate } from "../middlewares/validate.middleware";
 
 import { asyncHandler } from "../utils/asyncHandler";
@@ -25,6 +26,7 @@ const router = Router();
 
 router.get(
   "/",
+  optionalAuthenticate,
   validate({
     query: wallpaperListQuery,
   }),
@@ -36,14 +38,22 @@ router.get(
 // GET /api/wallpapers/featured
 // ======================================================
 
-router.get("/featured", asyncHandler(wallpaperController.featured));
+router.get(
+  "/featured",
+  optionalAuthenticate,
+  asyncHandler(wallpaperController.featured)
+);
 
 // ======================================================
 // TRENDING
 // GET /api/wallpapers/trending
 // ======================================================
 
-router.get("/trending", asyncHandler(wallpaperController.trending));
+router.get(
+  "/trending",
+  optionalAuthenticate,
+  asyncHandler(wallpaperController.trending)
+);
 
 // ======================================================
 // TOP WEEK
@@ -58,14 +68,22 @@ router.get("/trending", asyncHandler(wallpaperController.trending));
 // categorySlug=abstract
 // ======================================================
 
-router.get("/top-week", asyncHandler(wallpaperController.topWeek));
+router.get(
+  "/top-week",
+  optionalAuthenticate,
+  asyncHandler(wallpaperController.topWeek)
+);
 
 // ======================================================
 // PREMIUM
 // GET /api/wallpapers/premium
 // ======================================================
 
-router.get("/premium", asyncHandler(wallpaperController.premium));
+router.get(
+  "/premium",
+  optionalAuthenticate,
+  asyncHandler(wallpaperController.premium)
+);
 
 // ======================================================
 // SEARCH
@@ -77,6 +95,7 @@ router.get("/premium", asyncHandler(wallpaperController.premium));
 
 router.get(
   "/search",
+  optionalAuthenticate,
   validate({
     query: wallpaperSearchQuery,
   }),
@@ -93,6 +112,7 @@ router.get(
 
 router.get(
   "/category/:slug",
+  optionalAuthenticate,
   validate({
     params: wallpaperSlugParams,
     query: wallpaperListQuery,
@@ -110,6 +130,7 @@ router.get(
 
 router.get(
   "/slug/:slug",
+  optionalAuthenticate,
   validate({
     params: wallpaperSlugParams,
   }),
@@ -123,6 +144,7 @@ router.get(
 
 router.get(
   "/:id/related",
+  optionalAuthenticate,
   validate({
     params: wallpaperIdParams,
   }),
@@ -145,6 +167,7 @@ router.get(
 
 router.get(
   "/:id",
+  optionalAuthenticate,
   validate({
     params: wallpaperIdParams,
   }),

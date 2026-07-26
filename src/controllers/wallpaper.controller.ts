@@ -9,6 +9,7 @@ import { response, buildPagination } from "../utils/ApiResponse";
 import { ApiError } from "../utils/ApiError";
 
 import { toWallpaperDTO } from "../utils/dto";
+import { hasActivePremiumAccess } from "../services/premiumAccess.service";
 
 // ======================================================
 // TYPES
@@ -66,6 +67,19 @@ function parseNumberQuery(value: unknown, fallback: number): number {
   }
 
   return fallback;
+}
+
+async function getPremiumAccess(req: Request): Promise<boolean> {
+  return hasActivePremiumAccess(req.user?.id);
+}
+
+function assertPremiumWallpaperAccess(
+  wallpaper: Record<string, any>,
+  canAccessPremium: boolean
+) {
+  if (wallpaper.isPremium && !canAccessPremium) {
+    throw ApiError.forbidden("Premium subscription required.");
+  }
 }
 
 function getFilesMap(req: Request): MulterFilesMap {
@@ -164,6 +178,8 @@ export const wallpaperController = {
       | "random"
       | undefined;
 
+    const canAccessPremium = await getPremiumAccess(req);
+
     const { items, total } = await wallpaperService.list({
       limit,
       offset,
@@ -178,7 +194,9 @@ export const wallpaperController = {
 
     response.success(
       res,
-      items.map((wallpaper) => toWallpaperDTO(req, wallpaper)),
+      items.map((wallpaper) =>
+        toWallpaperDTO(req, wallpaper, { canAccessPremium })
+      ),
       {
         pagination: buildPagination(total, limit, offset, items.length),
       }
@@ -192,11 +210,14 @@ export const wallpaperController = {
   async featured(req: Request, res: Response) {
     const limit = parseNumberQuery(req.query.limit, 10);
 
+    const canAccessPremium = await getPremiumAccess(req);
     const wallpapers = await wallpaperService.getFeatured(limit);
 
     response.success(
       res,
-      wallpapers.map((wallpaper) => toWallpaperDTO(req, wallpaper))
+      wallpapers.map((wallpaper) =>
+        toWallpaperDTO(req, wallpaper, { canAccessPremium })
+      )
     );
   },
 
@@ -207,11 +228,14 @@ export const wallpaperController = {
   async trending(req: Request, res: Response) {
     const limit = parseNumberQuery(req.query.limit, 20);
 
+    const canAccessPremium = await getPremiumAccess(req);
     const wallpapers = await wallpaperService.getTrending(limit);
 
     response.success(
       res,
-      wallpapers.map((wallpaper) => toWallpaperDTO(req, wallpaper))
+      wallpapers.map((wallpaper) =>
+        toWallpaperDTO(req, wallpaper, { canAccessPremium })
+      )
     );
   },
 
@@ -226,6 +250,7 @@ export const wallpaperController = {
       | string
       | undefined;
 
+    const canAccessPremium = await getPremiumAccess(req);
     const wallpapers = await wallpaperService.getTopWeek({
       limit,
       category,
@@ -233,7 +258,9 @@ export const wallpaperController = {
 
     response.success(
       res,
-      wallpapers.map((wallpaper) => toWallpaperDTO(req, wallpaper))
+      wallpapers.map((wallpaper) =>
+        toWallpaperDTO(req, wallpaper, { canAccessPremium })
+      )
     );
   },
 
@@ -244,11 +271,14 @@ export const wallpaperController = {
   async premium(req: Request, res: Response) {
     const limit = parseNumberQuery(req.query.limit, 20);
 
+    const canAccessPremium = await getPremiumAccess(req);
     const wallpapers = await wallpaperService.getPremium(limit);
 
     response.success(
       res,
-      wallpapers.map((wallpaper) => toWallpaperDTO(req, wallpaper))
+      wallpapers.map((wallpaper) =>
+        toWallpaperDTO(req, wallpaper, { canAccessPremium })
+      )
     );
   },
 
@@ -257,9 +287,14 @@ export const wallpaperController = {
   // ======================================================
 
   async getById(req: Request, res: Response) {
+    const canAccessPremium = await getPremiumAccess(req);
     const wallpaper = await wallpaperService.getById(req.params.id);
 
-    response.success(res, toWallpaperDTO(req, wallpaper));
+    assertPremiumWallpaperAccess(wallpaper, canAccessPremium);
+    response.success(
+      res,
+      toWallpaperDTO(req, wallpaper, { canAccessPremium })
+    );
   },
 
   // ======================================================
@@ -267,9 +302,14 @@ export const wallpaperController = {
   // ======================================================
 
   async getBySlug(req: Request, res: Response) {
+    const canAccessPremium = await getPremiumAccess(req);
     const wallpaper = await wallpaperService.getBySlug(req.params.slug);
 
-    response.success(res, toWallpaperDTO(req, wallpaper));
+    assertPremiumWallpaperAccess(wallpaper, canAccessPremium);
+    response.success(
+      res,
+      toWallpaperDTO(req, wallpaper, { canAccessPremium })
+    );
   },
 
   // ======================================================
@@ -281,6 +321,7 @@ export const wallpaperController = {
 
     const offset = parseNumberQuery(req.query.offset, 0);
 
+    const canAccessPremium = await getPremiumAccess(req);
     const { category, items, total } =
       await wallpaperService.getByCategory(req.params.slug, limit, offset);
 
@@ -289,7 +330,9 @@ export const wallpaperController = {
       {
         category,
 
-        wallpapers: items.map((wallpaper) => toWallpaperDTO(req, wallpaper)),
+        wallpapers: items.map((wallpaper) =>
+          toWallpaperDTO(req, wallpaper, { canAccessPremium })
+        ),
       },
       {
         pagination: buildPagination(total, limit, offset, items.length),
@@ -308,11 +351,14 @@ export const wallpaperController = {
 
     const offset = parseNumberQuery(req.query.offset, 0);
 
+    const canAccessPremium = await getPremiumAccess(req);
     const { items, total } = await wallpaperService.search(q, limit, offset);
 
     response.success(
       res,
-      items.map((wallpaper) => toWallpaperDTO(req, wallpaper)),
+      items.map((wallpaper) =>
+        toWallpaperDTO(req, wallpaper, { canAccessPremium })
+      ),
       {
         pagination: buildPagination(total, limit, offset, items.length),
       }
@@ -326,11 +372,14 @@ export const wallpaperController = {
   async related(req: Request, res: Response) {
     const limit = parseNumberQuery(req.query.limit, 10);
 
+    const canAccessPremium = await getPremiumAccess(req);
     const wallpapers = await wallpaperService.related(req.params.id, limit);
 
     response.success(
       res,
-      wallpapers.map((wallpaper) => toWallpaperDTO(req, wallpaper))
+      wallpapers.map((wallpaper) =>
+        toWallpaperDTO(req, wallpaper, { canAccessPremium })
+      )
     );
   },
 

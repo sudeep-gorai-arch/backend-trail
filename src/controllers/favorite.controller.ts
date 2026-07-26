@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import { favoriteService } from '../services/favorite.service';
 
 import { toWallpaperDTO } from '../utils/dto';
+import { hasActivePremiumAccess } from '../services/premiumAccess.service';
 
 import { response, buildPagination } from '../utils/ApiResponse';
 
@@ -13,6 +14,7 @@ export const favoriteController = {
       offset: number;
     };
 
+    const canAccessPremium = await hasActivePremiumAccess(req.user!.id);
     const { items, total } = await favoriteService.list(
       req.user!.id,
       limit,
@@ -22,7 +24,7 @@ export const favoriteController = {
     response.success(
       res,
       items.map(wallpaper => ({
-        ...toWallpaperDTO(req, wallpaper),
+        ...toWallpaperDTO(req, wallpaper, { canAccessPremium }),
         isFavorite: true,
       })),
       {
@@ -37,6 +39,7 @@ export const favoriteController = {
       offset: number;
     };
 
+    const canAccessPremium = await hasActivePremiumAccess(req.user!.id);
     const { items, total } =
       await favoriteService.live(
         req.user!.id,
@@ -47,7 +50,7 @@ export const favoriteController = {
     response.success(
       res,
       items.map(wallpaper => ({
-        ...toWallpaperDTO(req, wallpaper),
+        ...toWallpaperDTO(req, wallpaper, { canAccessPremium }),
         isFavorite: true,
       })),
       {

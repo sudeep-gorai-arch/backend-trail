@@ -84,6 +84,10 @@ const normalizeMediaType = (w: AnyObj, rawVideoUrl?: string | null) => {
 
 export type WallpaperRow = AnyObj;
 
+type WallpaperDTOOptions = {
+  canAccessPremium?: boolean;
+};
+
 export const toCategoryDTO = (req: Request, c: AnyObj) => ({
   id: c.id,
   name: c.name,
@@ -101,7 +105,11 @@ export const toCategoryDTO = (req: Request, c: AnyObj) => ({
   count: c.count ?? c._count?.wallpapers ?? 0,
 });
 
-export const toWallpaperDTO = (req: Request, w: WallpaperRow) => {
+export const toWallpaperDTO = (
+  req: Request,
+  w: WallpaperRow,
+  options: WallpaperDTOOptions = {},
+) => {
   const imageVariant = getImageVariant(w);
   const videoVariant = getVideoVariant(w);
   const videoPreviewVariant = getVideoPreviewVariant(w);
@@ -210,6 +218,13 @@ export const toWallpaperDTO = (req: Request, w: WallpaperRow) => {
     ? videoUrl || videoPreviewUrl || imageUrl
     : imageUrl || thumbnailUrl;
 
+  const isPremium = Boolean(w.isPremium ?? w.is_premium ?? false);
+  const premiumLocked = isPremium && !options.canAccessPremium;
+  const accessibleImageUrl = premiumLocked ? thumbnailUrl : imageUrl;
+  const accessibleVideoUrl = premiumLocked ? null : videoUrl;
+  const accessibleVideoPreviewUrl = premiumLocked ? null : videoPreviewUrl;
+  const accessibleDownloadUrl = premiumLocked ? null : downloadUrl;
+
   const downloadsThisWeek =
     w.downloadsThisWeek ??
     w.weeklyDownloads ??
@@ -231,15 +246,15 @@ export const toWallpaperDTO = (req: Request, w: WallpaperRow) => {
 
     isVideo,
 
-    imageUrl,
+    imageUrl: accessibleImageUrl,
 
-    videoUrl,
+    videoUrl: accessibleVideoUrl,
 
-    videoPreviewUrl,
+    videoPreviewUrl: accessibleVideoPreviewUrl,
 
     thumbnailUrl,
 
-    downloadUrl,
+    downloadUrl: accessibleDownloadUrl,
 
     quality: w.quality ?? imageVariant?.quality ?? "4K",
 
@@ -263,7 +278,9 @@ export const toWallpaperDTO = (req: Request, w: WallpaperRow) => {
 
     extension: w.extension ?? null,
 
-    isPremium: Boolean(w.isPremium ?? w.is_premium ?? false),
+    isPremium,
+
+    premiumLocked,
 
     isFeatured: Boolean(w.isFeatured ?? w.is_featured ?? false),
 
