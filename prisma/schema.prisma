@@ -355,6 +355,8 @@ model Download {
 
   quality String @default("4K")
 
+  clientRequestId String? @unique @map("client_request_id") @db.Uuid
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)

@@ -14,31 +14,46 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
-  console.log("🌱 Starting user and role seed...");
+  console.log("🌱 Starting safe user and role seed...");
 
-  await prisma.userSession.deleteMany();
-  await prisma.user.deleteMany();
-  await prisma.role.deleteMany();
-
-  const adminRole = await prisma.role.create({
-    data: {
+  const adminRole = await prisma.role.upsert({
+    where: { name: "ADMIN" },
+    update: {
+      description: "System Administrator",
+    },
+    create: {
       name: "ADMIN",
       description: "System Administrator",
     },
   });
 
-  const userRole = await prisma.role.create({
-    data: {
+  const userRole = await prisma.role.upsert({
+    where: { name: "USER" },
+    update: {
+      description: "Application User",
+    },
+    create: {
       name: "USER",
       description: "Application User",
     },
   });
 
-  await prisma.user.create({
-    data: {
+  const adminPasswordHash = await bcrypt.hash("Admin123", 10);
+  const demoPasswordHash = await bcrypt.hash("Password123", 10);
+
+  await prisma.user.upsert({
+    where: { email: "admin@vividwalls.com" },
+    update: {
+      username: "Administrator",
+      bio: "Application Administrator",
+      authProvider: "LOCAL",
+      isPremium: true,
+      roleId: adminRole.id,
+    },
+    create: {
       email: "admin@vividwalls.com",
       username: "Administrator",
-      passwordHash: await bcrypt.hash("Admin123", 10),
+      passwordHash: adminPasswordHash,
       bio: "Application Administrator",
       authProvider: "LOCAL",
       isPremium: true,
@@ -47,11 +62,18 @@ async function main() {
     },
   });
 
-  await prisma.user.create({
-    data: {
+  await prisma.user.upsert({
+    where: { email: "demo@vividwalls.com" },
+    update: {
+      username: "Demo User",
+      bio: "Wallpaper Lover",
+      authProvider: "LOCAL",
+      roleId: userRole.id,
+    },
+    create: {
       email: "demo@vividwalls.com",
       username: "Demo User",
-      passwordHash: await bcrypt.hash("Password123", 10),
+      passwordHash: demoPasswordHash,
       bio: "Wallpaper Lover",
       authProvider: "LOCAL",
       isPremium: false,
@@ -59,8 +81,7 @@ async function main() {
     },
   });
 
-  console.log("✅ Roles created: 2");
-  console.log("✅ Users created: 2");
+  console.log("✅ Roles and seed users are present.");
 }
 
 main()
