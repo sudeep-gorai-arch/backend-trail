@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import healthRoutes from './health.routes';
 import authRoutes from './auth.routes';
 import userRoutes from './user.routes';
 import wallpaperRoutes from './wallpaper.routes';
@@ -10,11 +11,7 @@ import subscriptionRoutes from './subscription.routes';
 
 const router = Router();
 
-// GET /api/health
-router.get('/health', (_req, res) => {
-  res.json({ success: true, status: 'ok', timestamp: new Date().toISOString() });
-});
-
+router.use('/health', healthRoutes);
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/wallpapers', wallpaperRoutes);
