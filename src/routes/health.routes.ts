@@ -11,18 +11,6 @@ const router = Router();
  */
 router.get('/', asyncHandler(healthController.getHealth));
 
-/**
- * @route   GET /api/health/liveness
- * @desc    Process liveness probe (verifies process uptime)
- * @access  Public
- */
-router.get('/liveness', asyncHandler(healthController.getLiveness));
 
-/**
- * @route   GET /api/health/readiness
- * @desc    Readiness probe (verifies PostgreSQL database connection & response latency)
- * @access  Public
- */
-router.get('/readiness', asyncHandler(healthController.getReadiness));
 
 export default router;
