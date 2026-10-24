@@ -12,7 +12,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "test:security": "node --experimental-strip-types --test tests/*.test.mjs"
+    "test:security": "node --experimental-default-type=module --experimental-strip-types --test tests/*.test.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
