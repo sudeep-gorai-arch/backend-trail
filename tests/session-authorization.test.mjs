@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { activeSessionIdentity } from '../src/utils/sessionIdentity.ts';
+import * as sessionHelpers from '../src/utils/sessionIdentity.ts';
+const activeSessionIdentity = sessionHelpers.activeSessionIdentity ?? sessionHelpers.default?.activeSessionIdentity;
 
 const storedUser = { id: 'user-1', email: 'qa@example.invalid', role: { name: 'USER' } };
 
