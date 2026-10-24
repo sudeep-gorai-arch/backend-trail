@@ -60,7 +60,8 @@ router.post(
 //Google Login
 router.post(
   "/google",
-  authController.google
+  validate({ body: z.object({ idToken: z.string().min(1).max(10000) }) }),
+  asyncHandler(authController.google),
 );
 
 
