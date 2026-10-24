@@ -123,6 +123,7 @@ const mapSubscription = (subscription: any, payment?: any) => {
   if (!subscription) return null;
 
   const cancellation = getCancellationFromPayment(payment);
+  const googleRenewal = toRecord(toRecord(payment?.notes).googlePlayRenewal);
 
   return {
     id: subscription.id,
@@ -140,7 +141,19 @@ const mapSubscription = (subscription: any, payment?: any) => {
     startDate: subscription.startDate,
     endDate: subscription.endDate,
     active: subscription.active,
-    cancelAtCycleEnd: cancellation.cancelAtCycleEnd,
+    cancelAtCycleEnd:
+      subscription.platform === SubscriptionPlatform.GOOGLE
+        ? Boolean(googleRenewal.cancellationScheduled)
+        : cancellation.cancelAtCycleEnd,
+    autoRenewing:
+      subscription.platform === SubscriptionPlatform.GOOGLE &&
+      typeof googleRenewal.autoRenewing === 'boolean'
+        ? googleRenewal.autoRenewing
+        : null,
+    googlePlayState:
+      subscription.platform === SubscriptionPlatform.GOOGLE
+        ? String(googleRenewal.state || '') || null
+        : null,
     cancelledAt: cancellation.cancelledAt,
     createdAt: subscription.createdAt,
   };
@@ -557,23 +570,20 @@ export const subscriptionService = {
         (user.isPremium && premiumUntil && premiumUntil > now),
     );
 
-    if (user.isPremium !== isPremium) {
+    if (user.isPremium !== isPremium ||
+        (user.premiumUntil?.getTime() ?? null) !== (premiumUntil?.getTime() ?? null)) {
       await prisma.user.update({
-        where: {
-          id: userId,
-        },
-        data: {
-          isPremium,
-        },
+        where: { id: userId },
+        data: { isPremium, premiumUntil },
       });
     }
 
-    const currentPlan: SubscriptionPlanCode =
-      activeSubscription?.plan ??
-      latestSubscription?.plan ??
-      'FREE';
+    const currentPlan: SubscriptionPlanCode = activeSubscription?.plan ?? 'FREE';
 
     const cancellation = getCancellationFromPayment(activePayment);
+    const googleRenewal = toRecord(toRecord(activePayment?.notes).googlePlayRenewal);
+    const googleCancelled = activeSubscription?.platform === SubscriptionPlatform.GOOGLE &&
+      Boolean(googleRenewal.cancellationScheduled);
 
     return {
       isPremium,
@@ -582,7 +592,9 @@ export const subscriptionService = {
       activeSubscription: mapSubscription(activeSubscription, activePayment),
       latestSubscription: mapSubscription(latestSubscription),
       latestPayment: mapPayment(latestPayment),
-      cancellation: cancellation.cancelAtCycleEnd ? cancellation : undefined,
+      cancellation: googleCancelled
+        ? { cancelAtCycleEnd: true, cancelledAt: null, razorpaySubscriptionId: null }
+        : cancellation.cancelAtCycleEnd ? cancellation : undefined,
     };
   },
 
