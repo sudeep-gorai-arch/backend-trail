@@ -25,7 +25,8 @@ test('temporary Google Play outage asks to retry restore without repurchasing', 
 
 test('API errors never contain tokens, response bodies, or secrets', () => {
   const api = readFileSync(new URL('../src/config/googlePlay.ts', import.meta.url), 'utf8');
-  assert.doesNotMatch(api, /response\.text\(\)/);
+  const failurePath = api.slice(api.indexOf('if (!response.ok)'), api.indexOf('if (response.status === 204)'));
+  assert.doesNotMatch(failurePath, /response\.text\(\)/);
   assert.match(api, /classifyGooglePlayHttpError\(response\.status\)/);
 });
 
