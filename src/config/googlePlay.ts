@@ -2,6 +2,7 @@ import { GoogleAuth } from 'google-auth-library';
 
 import { env } from './env';
 import { ApiError } from '../utils/ApiError';
+import { classifyGooglePlayHttpError } from '../utils/googlePlayErrors';
 
 const ANDROID_PUBLISHER_SCOPE =
   'https://www.googleapis.com/auth/androidpublisher';
@@ -19,17 +20,13 @@ const parseServiceAccount = () => {
     : env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON;
 
   if (!raw) {
-    throw ApiError.internal(
-      'Google Play service-account credentials are not configured.',
-    );
+    throw new ApiError(503, 'Google Play verification is unavailable: service-account credentials are not configured on the backend.');
   }
 
   try {
     return JSON.parse(raw);
   } catch {
-    throw ApiError.internal(
-      'Google Play service-account credentials are invalid JSON.',
-    );
+    throw new ApiError(503, 'Google Play verification is unavailable: service-account credentials are invalid JSON.');
   }
 };
 
@@ -45,15 +42,20 @@ const getAuth = () => {
 };
 
 const getAccessToken = async () => {
-  const client = await getAuth().getClient();
-  const response = await client.getAccessToken();
-  const token = typeof response === 'string' ? response : response?.token;
-
-  if (!token) {
-    throw ApiError.internal('Unable to obtain a Google Play API token.');
+  try {
+    const client = await getAuth().getClient();
+    const response = await client.getAccessToken();
+    const token = typeof response === 'string' ? response : response?.token;
+    if (!token) {
+      throw new ApiError(503, 'Google Play verification is unavailable: service-account authentication returned no token.');
+    }
+    return token;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    // A credential failure may include provider details in the underlying error.
+    // Do not surface them to app users or persist purchase data in logs.
+    throw new ApiError(503, 'Google Play verification is unavailable: the backend service account could not authenticate.');
   }
-
-  return token;
 };
 
 const googleRequest = async <T>(
@@ -61,21 +63,23 @@ const googleRequest = async <T>(
   init: RequestInit = {},
 ): Promise<T> => {
   const token = await getAccessToken();
-  const response = await fetch(`${API_ROOT}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json',
-      ...(init.headers ?? {}),
-    },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_ROOT}${path}`, {
+      ...init,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        ...(init.headers ?? {}),
+      },
+    });
+  } catch {
+    throw new ApiError(503, 'Google Play verification is temporarily unavailable. Retry Restore Purchase later.');
+  }
 
   if (!response.ok) {
-    const details = await response.text();
-    throw ApiError.badRequest(
-      `Google Play verification failed (${response.status}).`,
-      details,
-    );
+    const failure = classifyGooglePlayHttpError(response.status);
+    throw new ApiError(failure.statusCode, failure.message);
   }
 
   if (response.status === 204) {
