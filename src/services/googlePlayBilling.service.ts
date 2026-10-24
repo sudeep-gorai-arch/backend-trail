@@ -392,7 +392,13 @@ export const googlePlayBillingService = {
     await persistEntitlement(userId, input, snapshot);
 
     if (snapshot.acknowledgementPending) {
-      await acknowledge(input.plan, input.productId, input.purchaseToken);
+      try {
+        await acknowledge(input.plan, input.productId, input.purchaseToken);
+      } catch {
+        // Entitlement was already verified and committed. Do not report a
+        // failed purchase after successful activation. Retry on status sync.
+        console.warn('GOOGLE PLAY ACKNOWLEDGEMENT RETRY REQUIRED');
+      }
     }
 
     return subscriptionService.status(userId);
