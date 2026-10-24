@@ -175,6 +175,34 @@ router.get(
   asyncHandler(wallpaperController.getById)
 );
 
+// Public engagement counters remain backward-compatible with existing apps.
+// ======================================================
+// VIEW COUNT
+// POST /api/wallpapers/:id/view
+// ======================================================
+
+router.post(
+  "/:id/view",
+  validate({
+    params: wallpaperIdParams,
+  }),
+  asyncHandler(wallpaperController.incrementViews)
+);
+
+// ======================================================
+// DOWNLOAD COUNT
+// POST /api/wallpapers/:id/download
+// ======================================================
+
+router.post(
+  "/:id/download",
+  validate({
+    params: wallpaperIdParams,
+  }),
+  asyncHandler(wallpaperController.incrementDownloads)
+);
+
+export default router;
 // All following routes mutate application content and require the ADMIN role.
 router.use(authenticate, adminOnly);
 
@@ -321,30 +349,3 @@ router.patch(
   asyncHandler(wallpaperController.toggleActive)
 );
 
-// ======================================================
-// VIEW COUNT
-// POST /api/wallpapers/:id/view
-// ======================================================
-
-router.post(
-  "/:id/view",
-  validate({
-    params: wallpaperIdParams,
-  }),
-  asyncHandler(wallpaperController.incrementViews)
-);
-
-// ======================================================
-// DOWNLOAD COUNT
-// POST /api/wallpapers/:id/download
-// ======================================================
-
-router.post(
-  "/:id/download",
-  validate({
-    params: wallpaperIdParams,
-  }),
-  asyncHandler(wallpaperController.incrementDownloads)
-);
-
-export default router;
