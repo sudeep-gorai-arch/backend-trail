@@ -134,7 +134,8 @@ const mapSubscription = (subscription: any, payment?: any) => {
     paymentId: subscription.paymentId,
     razorpayPaymentId: subscription.paymentId,
     razorpaySubscriptionId: extractRazorpaySubscriptionId(subscription, payment),
-    purchaseToken: subscription.purchaseToken ?? null,
+    // The app does not need raw Play purchase tokens to show subscription status.
+    purchaseToken: subscription.platform === SubscriptionPlatform.GOOGLE ? null : (subscription.purchaseToken ?? null),
     amount: subscription.amount,
     currency: subscription.currency,
     status: subscription.status,
@@ -162,6 +163,16 @@ const mapSubscription = (subscription: any, payment?: any) => {
 const mapPayment = (payment: any) => {
   if (!payment) return null;
 
+  const isGoogle = payment.platform === SubscriptionPlatform.GOOGLE;
+  const rawNotes = toRecord(payment.notes);
+  const notes = isGoogle
+    ? {
+        plan: rawNotes.plan ?? null,
+        productId: rawNotes.productId ?? null,
+        googlePlayRenewal: rawNotes.googlePlayRenewal ?? null,
+      }
+    : payment.notes;
+
   return {
     id: payment.id,
     orderId: payment.orderId,
@@ -171,10 +182,10 @@ const mapPayment = (payment: any) => {
     amount: payment.amount,
     currency: payment.currency,
     status: payment.status,
-    receipt: payment.receipt,
+    receipt: isGoogle ? null : payment.receipt,
     paidAt: payment.paidAt,
     createdAt: payment.createdAt,
-    notes: payment.notes,
+    notes,
   };
 };
 
