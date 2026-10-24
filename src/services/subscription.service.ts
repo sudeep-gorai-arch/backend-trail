@@ -239,11 +239,13 @@ export const subscriptionService = {
       throw ApiError.badRequest('Invalid payment owner.');
     }
 
-    if (
-      paymentRecord.status === PaymentStatus.PAID &&
-      paymentRecord.paymentId === input.razorpay_payment_id
-    ) {
-      return subscriptionService.status(userId);
+    // Repeated verification of an already-paid order must never create
+    // a second entitlement or accept a different payment for that order.
+    if (paymentRecord.status === PaymentStatus.PAID) {
+      if (paymentRecord.paymentId === input.razorpay_payment_id) {
+        return subscriptionService.status(userId);
+      }
+      throw ApiError.conflict('Payment order has already been completed.');
     }
 
     const duplicatePayment = await prisma.payment.findUnique({
