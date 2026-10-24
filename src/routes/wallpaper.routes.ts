@@ -3,7 +3,8 @@ import { Router } from "express";
 import { wallpaperController } from "../controllers/wallpaper.controller";
 
 import { upload } from "../middlewares/upload.middleware";
-import { optionalAuthenticate } from "../middlewares/auth.middleware";
+import { authenticate, optionalAuthenticate } from "../middlewares/auth.middleware";
+import { adminOnly } from "../middlewares/admin.middleware";
 import { validate } from "../middlewares/validate.middleware";
 
 import { asyncHandler } from "../utils/asyncHandler";
@@ -174,6 +175,37 @@ router.get(
   asyncHandler(wallpaperController.getById)
 );
 
+// Public engagement counters remain backward-compatible with existing apps.
+// ======================================================
+// VIEW COUNT
+// POST /api/wallpapers/:id/view
+// ======================================================
+
+router.post(
+  "/:id/view",
+  validate({
+    params: wallpaperIdParams,
+  }),
+  asyncHandler(wallpaperController.incrementViews)
+);
+
+// ======================================================
+// DOWNLOAD COUNT
+// POST /api/wallpapers/:id/download
+// ======================================================
+
+router.post(
+  "/:id/download",
+  validate({
+    params: wallpaperIdParams,
+  }),
+  asyncHandler(wallpaperController.incrementDownloads)
+);
+
+export default router;
+// All following routes mutate application content and require the ADMIN role.
+router.use(authenticate, adminOnly);
+
 // ======================================================
 // CREATE
 // POST /api/wallpapers
@@ -317,30 +349,3 @@ router.patch(
   asyncHandler(wallpaperController.toggleActive)
 );
 
-// ======================================================
-// VIEW COUNT
-// POST /api/wallpapers/:id/view
-// ======================================================
-
-router.post(
-  "/:id/view",
-  validate({
-    params: wallpaperIdParams,
-  }),
-  asyncHandler(wallpaperController.incrementViews)
-);
-
-// ======================================================
-// DOWNLOAD COUNT
-// POST /api/wallpapers/:id/download
-// ======================================================
-
-router.post(
-  "/:id/download",
-  validate({
-    params: wallpaperIdParams,
-  }),
-  asyncHandler(wallpaperController.incrementDownloads)
-);
-
-export default router;

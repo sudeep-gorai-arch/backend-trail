@@ -66,8 +66,6 @@ export const authController = {
     res: Response
   ) {
 
-    console.log("Google Login API Called");
-    console.log(req.body);
 
     const result =
       await authService.googleLogin(

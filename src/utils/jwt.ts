@@ -1,4 +1,5 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
+import { randomUUID } from 'crypto';
 import { env } from '../config/env';
 
 export interface JwtPayload {
@@ -10,6 +11,7 @@ export interface JwtPayload {
 export const signToken = (payload: JwtPayload): string =>
   jwt.sign(payload, env.JWT_SECRET, {
     expiresIn: env.JWT_EXPIRES_IN,
+    jwtid: randomUUID(),
   } as SignOptions);
 
 export const verifyToken = (token: string): JwtPayload =>

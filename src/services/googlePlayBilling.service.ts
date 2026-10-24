@@ -14,6 +14,7 @@ import {
 } from '../config/subscriptionPlans';
 import { ApiError } from '../utils/ApiError';
 import { subscriptionService } from './subscription.service';
+import { getGooglePlayRenewalDetails } from '../utils/googlePlayRenewal';
 
 type GooglePlayPlan = Extract<
   PaidSubscriptionPlan,
@@ -35,6 +36,7 @@ type PurchaseSnapshot = {
   amount: number;
   currency: string;
   acknowledgementPending: boolean;
+  renewalDetails?: ReturnType<typeof getGooglePlayRenewalDetails>;
   obfuscatedAccountId?: string;
   raw: any;
 };
@@ -140,6 +142,7 @@ const getSubscriptionSnapshot = async (
     acknowledgementPending:
       purchase.acknowledgementState ===
       'ACKNOWLEDGEMENT_STATE_PENDING',
+    renewalDetails: getGooglePlayRenewalDetails(purchase),
     obfuscatedAccountId:
       purchase.externalAccountIdentifiers?.obfuscatedExternalAccountId,
     raw: purchase,
@@ -312,8 +315,8 @@ const persistEntitlement = async (
     const notes = {
       plan: input.plan,
       productId: input.productId,
-      purchaseToken: input.purchaseToken,
-      googlePlayPurchase: snapshot.raw,
+      // Do not replicate raw purchase tokens or full Google API responses in payment history.
+      googlePlayRenewal: snapshot.renewalDetails ?? null,
     } as any;
 
     if (duplicateOrder) {

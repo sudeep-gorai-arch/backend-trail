@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { authenticate } from "../middlewares/auth.middleware";
+import { adminOnly } from "../middlewares/admin.middleware";
 
 import { categoryController } from "../controllers/category.controller";
 
@@ -41,6 +43,9 @@ router.get(
   }),
   asyncHandler(categoryController.getBySlug)
 );
+
+// All following routes mutate application content and require the ADMIN role.
+router.use(authenticate, adminOnly);
 
 // ======================================================
 // ADMIN ROUTES
