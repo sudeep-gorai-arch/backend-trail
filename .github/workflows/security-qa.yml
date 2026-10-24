@@ -28,3 +28,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run non-destructive regression tests
         run: npm run test:security
+      - name: Build and type-check backend
+        env:
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+        run: npm run build
