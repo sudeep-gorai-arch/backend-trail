@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { rateLimit } from "../middlewares/rateLimit.middleware";
 
 import { wallpaperController } from "../controllers/wallpaper.controller";
 
@@ -183,6 +184,7 @@ router.get(
 
 router.post(
   "/:id/view",
+  rateLimit("legacy-view-counter", { windowMs: 60_000, max: 40 }),
   validate({
     params: wallpaperIdParams,
   }),
@@ -196,6 +198,7 @@ router.post(
 
 router.post(
   "/:id/download",
+  rateLimit("legacy-download-counter", { windowMs: 60_000, max: 20 }),
   validate({
     params: wallpaperIdParams,
   }),
