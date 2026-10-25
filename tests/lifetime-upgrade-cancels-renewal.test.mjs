@@ -15,3 +15,9 @@ test('verified lifetime access stops the preceding Google Play subscription rene
   assert.match(block,/googlePlayApi\.cancelSubscriptionRenewal\(previous\.purchaseToken\)/);
   assert.doesNotMatch(block,/prisma\.subscription\.delete/);
 });
+
+test('recovery includes an explicit pending cancellation warning if Play cannot stop old renewals', () => {
+  assert.match(source,/let renewalCancellationPending = false/);
+  assert.match(source,/renewalCancellationPending = true/);
+  assert.match(source,/return \{ \.\.\.status, renewalCancellationPending \}/);
+});
