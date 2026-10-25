@@ -10,6 +10,7 @@ import {
   createOrderBody,
   verifyPaymentBody,
   verifyGooglePlayPurchaseBody,
+  googlePlayCancellationBody,
 } from '../validations/subscription.validation';
 
 const router = Router();
@@ -71,6 +72,12 @@ router.post(
 // CANCEL SUBSCRIPTION AUTO-RENEWAL
 // POST /api/subscriptions/cancel
 // ======================================
+
+router.post(
+  '/google-play/cancel',
+  validate({ body: googlePlayCancellationBody }),
+  asyncHandler(subscriptionController.cancelGooglePlaySubscription),
+);
 
 router.post('/cancel', asyncHandler(subscriptionController.cancelSubscription));
 
