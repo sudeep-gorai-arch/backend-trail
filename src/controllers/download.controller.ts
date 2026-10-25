@@ -4,6 +4,7 @@ import { downloadService } from '../services/download.service';
 import { response, buildPagination } from '../utils/ApiResponse';
 import { toWallpaperDTO } from '../utils/dto';
 import { absoluteUrl } from '../utils/url';
+import { validatedGuestId } from '../utils/guestIdentity';
 
 const withAbsoluteMedia = (req: Request, payload: Record<string, any>) => ({
   ...payload,
@@ -17,7 +18,7 @@ const withAbsoluteMedia = (req: Request, payload: Record<string, any>) => ({
 
 const getOwner = (req: Request) => ({
   userId: req.user?.id ?? null,
-  guestId: req.header('x-guest-id') ?? null,
+  guestId: req.user?.id ? null : validatedGuestId(req.header('x-guest-id')),
 });
 
 export const downloadController = {
