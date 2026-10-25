@@ -7,6 +7,7 @@ import {
   createOrderBody,
   verifyPaymentBody,
   verifyGooglePlayPurchaseBody,
+  googlePlayCancellationBody,
 } from '../validations/subscription.validation';
 
 const getUserId = (req: Request) => {
@@ -55,6 +56,18 @@ export const subscriptionController = {
     return res.status(200).json({
       success: true,
       message: 'Google Play purchase verified successfully.',
+      data: status,
+    });
+  },
+
+  async cancelGooglePlaySubscription(req: Request, res: Response) {
+    const userId = getUserId(req);
+    const { reason } = googlePlayCancellationBody.parse(req.body);
+    const status = await googlePlayBillingService.cancelRenewal(userId, reason);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Google Play auto-renewal cancellation requested successfully.',
       data: status,
     });
   },

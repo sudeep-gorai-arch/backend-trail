@@ -405,6 +405,83 @@ export const googlePlayBillingService = {
     return subscriptionService.status(userId);
   },
 
+  /**
+   * Cancel only the authenticated account's current Google Play recurring
+   * subscription. Never accept purchase tokens or product IDs from the client.
+   * This does not refund, revoke or cancel lifetime purchases.
+   */
+  async cancelRenewal(
+    userId: string,
+    reason:
+      | 'CANCEL_SURVEY_REASON_NOT_ENOUGH_USAGE'
+      | 'CANCEL_SURVEY_REASON_TECHNICAL_ISSUES'
+      | 'CANCEL_SURVEY_REASON_COST_RELATED'
+      | 'CANCEL_SURVEY_REASON_FOUND_BETTER_APP'
+      | 'CANCEL_SURVEY_REASON_OTHERS',
+  ) {
+    const active = await prisma.subscription.findFirst({
+      where: {
+        userId,
+        platform: SubscriptionPlatform.GOOGLE,
+        active: true,
+        plan: { in: ['MONTHLY', 'YEARLY'] },
+        status: PaymentStatus.PAID,
+        endDate: { gt: new Date() },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!active?.purchaseToken) {
+      throw ApiError.badRequest('No active renewable Google Play subscription is linked to this account.');
+    }
+
+    // Read Google's current state before issuing a sensitive billing action.
+    const purchase = await googlePlayApi.getSubscription(active.purchaseToken);
+    const expectedProduct = PRODUCT_ID_BY_PLAN[active.plan as GooglePlayPlan];
+    if (!purchase.lineItems?.some((item: any) => item.productId === expectedProduct)) {
+      throw ApiError.badRequest('Google Play subscription product does not match this account.');
+    }
+    assertAccountOwner(userId, purchase.externalAccountIdentifiers?.obfuscatedExternalAccountId);
+
+    const renewal = getGooglePlayRenewalDetails(purchase);
+    const state = String(purchase.subscriptionState ?? '');
+    if (state === 'SUBSCRIPTION_STATE_EXPIRED' ||
+        state === 'SUBSCRIPTION_STATE_ON_HOLD' ||
+        state === 'SUBSCRIPTION_STATE_PAUSED' ||
+        state === 'SUBSCRIPTION_STATE_PENDING') {
+      throw ApiError.badRequest('This subscription cannot be cancelled here in its current state. Please check Google Play.');
+    }
+
+    if (!renewal?.cancellationScheduled) {
+      await googlePlayApi.cancelSubscriptionRenewal(active.purchaseToken);
+    }
+
+    // Read back Google's authoritative renewal state. Successful cancellation
+    // must not be mistaken for a failed action if the follow-up read times out.
+    try {
+      await googlePlayBillingService.syncActivePurchase(userId);
+    } catch {
+      console.warn('GOOGLE PLAY CANCEL FOLLOW-UP SYNC DEFERRED');
+    }
+
+    // The reason is FlexiWalls-only feedback, never a Google Play survey.
+    const payment = await prisma.payment.findFirst({
+      where: { userId, subscriptionId: active.id },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (payment) {
+      const existingNotes = payment.notes && typeof payment.notes === 'object' && !Array.isArray(payment.notes)
+        ? payment.notes as Record<string, any>
+        : {};
+      await prisma.payment.update({
+        where: { id: payment.id },
+        data: { notes: { ...existingNotes, flexiwallsCancellationReason: reason } },
+      });
+    }
+
+    return subscriptionService.status(userId);
+  },
+
   async syncActivePurchase(userId: string) {
     const active = await prisma.subscription.findFirst({
       where: {
