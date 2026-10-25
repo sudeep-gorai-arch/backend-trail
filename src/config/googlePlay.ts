@@ -102,6 +102,22 @@ export const googlePlayApi = {
     );
   },
 
+  cancelSubscriptionRenewal(purchaseToken: string) {
+    // USER_REQUESTED_STOP_RENEWALS keeps already-paid access through expiry.
+    // The cancellation reason survey isn't part of this Google API.
+    return googleRequest<void>(
+      `${packagePath()}/purchases/subscriptionsv2/tokens/${encodeURIComponent(purchaseToken)}:cancel`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          cancellationContext: {
+            cancellationType: 'USER_REQUESTED_STOP_RENEWALS',
+          },
+        }),
+      },
+    );
+  },
+
   acknowledgeSubscription(productId: string, purchaseToken: string) {
     return googleRequest<void>(
       `${packagePath()}/purchases/subscriptions/${encodeURIComponent(
