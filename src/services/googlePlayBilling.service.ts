@@ -407,6 +407,7 @@ export const googlePlayBillingService = {
 
     await persistEntitlement(userId, input, snapshot);
 
+    let renewalCancellationPending = false;
     // A Lifetime purchase is a separate one-time product. It does not
     // automatically replace a recurring Google Play subscription. Stop
     // any previous renewals after Lifetime is verified and persisted.
@@ -430,10 +431,15 @@ export const googlePlayBillingService = {
           const renewal = getGooglePlayRenewalDetails(prior);
           if (renewal?.autoRenewing === true && !renewal.cancellationScheduled) {
             await googlePlayApi.cancelSubscriptionRenewal(previous.purchaseToken);
+          } else if (!renewal || renewal.autoRenewing === null) {
+            // Ownership verified but Play hasn't provided renewal status.
+            // Don't promise cancellation until the subscription can be checked.
+            renewalCancellationPending = true;
           }
         } catch {
           // Do not roll back a valid Lifetime purchase; retrying receipt
           // verification will request cancellation of remaining renewals.
+          renewalCancellationPending = true;
           console.warn('GOOGLE PLAY PREVIOUS RENEWAL CANCEL RETRY REQUIRED');
         }
       }
@@ -449,7 +455,8 @@ export const googlePlayBillingService = {
       }
     }
 
-    return subscriptionService.status(userId);
+    const status = await subscriptionService.status(userId);
+    return { ...status, renewalCancellationPending };
   },
 
   /**
