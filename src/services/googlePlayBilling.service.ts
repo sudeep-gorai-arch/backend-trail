@@ -343,7 +343,8 @@ const persistEntitlement = async (
           amount: snapshot.amount,
           currency: snapshot.currency,
           status: PaymentStatus.PAID,
-          receipt: input.purchaseToken,
+          // Do not replicate raw Play purchase tokens in payment receipts.
+          receipt: tokenOrderId(input.purchaseToken),
           paidAt: snapshot.startDate,
           notes,
         },

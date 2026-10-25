@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { rateLimit } from '../middlewares/rateLimit.middleware';
 import { z } from 'zod';
 
 import { downloadController } from '../controllers/download.controller';
@@ -10,6 +11,9 @@ import { validate } from '../middlewares/validate.middleware';
 import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
+
+// Bound requests per source while leaving genuine guest and signed-in downloads available.
+router.use(rateLimit('downloads', { windowMs: 60_000, max: 120 }));
 
 const pageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(20),
