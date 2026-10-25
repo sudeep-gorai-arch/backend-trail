@@ -266,7 +266,22 @@ const persistEntitlement = async (
       },
     });
 
-    const shouldActivate = input.plan === 'LIFETIME' || !activeLifetime;
+    // Restoring an older superseded Play token must not replace a more recent
+    // recurring plan. New plans have a later Google purchase startTime.
+    const newerRecurring = input.plan !== 'LIFETIME'
+      ? await tx.subscription.findFirst({
+          where: {
+            userId,
+            platform: SubscriptionPlatform.GOOGLE,
+            plan: { in: ['MONTHLY', 'YEARLY'] },
+            status: PaymentStatus.PAID,
+            active: true,
+            startDate: { gt: snapshot.startDate },
+            NOT: { purchaseToken: input.purchaseToken },
+          },
+        })
+      : null;
+    const shouldActivate = input.plan === 'LIFETIME' || (!activeLifetime && !newerRecurring);
 
     if (shouldActivate) {
       await tx.subscription.updateMany({
@@ -392,6 +407,44 @@ export const googlePlayBillingService = {
 
     await persistEntitlement(userId, input, snapshot);
 
+    let renewalCancellationPending = false;
+    // A Lifetime purchase is a separate one-time product. It does not
+    // automatically replace a recurring Google Play subscription. Stop
+    // any previous renewals after Lifetime is verified and persisted.
+    // Failure here never revokes Lifetime; repeat cancellation when syncing.
+    if (input.plan === 'LIFETIME') {
+      const previousRecurring = await prisma.subscription.findMany({
+        where: {
+          userId,
+          platform: SubscriptionPlatform.GOOGLE,
+          plan: { in: ['MONTHLY', 'YEARLY'] },
+          purchaseToken: { not: null },
+          endDate: { gt: new Date() },
+          NOT: { purchaseToken: input.purchaseToken },
+        },
+      });
+      for (const previous of previousRecurring) {
+        if (!previous.purchaseToken) continue;
+        try {
+          const prior = await googlePlayApi.getSubscription(previous.purchaseToken);
+          assertAccountOwner(userId, prior.externalAccountIdentifiers?.obfuscatedExternalAccountId);
+          const renewal = getGooglePlayRenewalDetails(prior);
+          if (renewal?.autoRenewing === true && !renewal.cancellationScheduled) {
+            await googlePlayApi.cancelSubscriptionRenewal(previous.purchaseToken);
+          } else if (!renewal || renewal.autoRenewing === null) {
+            // Ownership verified but Play hasn't provided renewal status.
+            // Don't promise cancellation until the subscription can be checked.
+            renewalCancellationPending = true;
+          }
+        } catch {
+          // Do not roll back a valid Lifetime purchase; retrying receipt
+          // verification will request cancellation of remaining renewals.
+          renewalCancellationPending = true;
+          console.warn('GOOGLE PLAY PREVIOUS RENEWAL CANCEL RETRY REQUIRED');
+        }
+      }
+    }
+
     if (snapshot.acknowledgementPending) {
       try {
         await acknowledge(input.plan, input.productId, input.purchaseToken);
@@ -402,7 +455,8 @@ export const googlePlayBillingService = {
       }
     }
 
-    return subscriptionService.status(userId);
+    const status = await subscriptionService.status(userId);
+    return { ...status, renewalCancellationPending };
   },
 
   /**
