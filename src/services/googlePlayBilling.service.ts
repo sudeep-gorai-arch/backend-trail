@@ -392,6 +392,38 @@ export const googlePlayBillingService = {
 
     await persistEntitlement(userId, input, snapshot);
 
+    // A Lifetime purchase is a separate one-time product. It does not
+    // automatically replace a recurring Google Play subscription. Stop
+    // any previous renewals after Lifetime is verified and persisted.
+    // Failure here never revokes Lifetime; repeat cancellation when syncing.
+    if (input.plan === 'LIFETIME') {
+      const previousRecurring = await prisma.subscription.findMany({
+        where: {
+          userId,
+          platform: SubscriptionPlatform.GOOGLE,
+          plan: { in: ['MONTHLY', 'YEARLY'] },
+          purchaseToken: { not: null },
+          endDate: { gt: new Date() },
+          NOT: { purchaseToken: input.purchaseToken },
+        },
+      });
+      for (const previous of previousRecurring) {
+        if (!previous.purchaseToken) continue;
+        try {
+          const prior = await googlePlayApi.getSubscription(previous.purchaseToken);
+          assertAccountOwner(userId, prior.externalAccountIdentifiers?.obfuscatedExternalAccountId);
+          const renewal = getGooglePlayRenewalDetails(prior);
+          if (renewal?.autoRenewing === true && !renewal.cancellationScheduled) {
+            await googlePlayApi.cancelSubscriptionRenewal(previous.purchaseToken);
+          }
+        } catch {
+          // Do not roll back a valid Lifetime purchase; retrying receipt
+          // verification will request cancellation of remaining renewals.
+          console.warn('GOOGLE PLAY PREVIOUS RENEWAL CANCEL RETRY REQUIRED');
+        }
+      }
+    }
+
     if (snapshot.acknowledgementPending) {
       try {
         await acknowledge(input.plan, input.productId, input.purchaseToken);
