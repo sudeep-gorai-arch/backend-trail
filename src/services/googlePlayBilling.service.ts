@@ -266,7 +266,22 @@ const persistEntitlement = async (
       },
     });
 
-    const shouldActivate = input.plan === 'LIFETIME' || !activeLifetime;
+    // Restoring an older superseded Play token must not replace a more recent
+    // recurring plan. New plans have a later Google purchase startTime.
+    const newerRecurring = input.plan !== 'LIFETIME'
+      ? await tx.subscription.findFirst({
+          where: {
+            userId,
+            platform: SubscriptionPlatform.GOOGLE,
+            plan: { in: ['MONTHLY', 'YEARLY'] },
+            status: PaymentStatus.PAID,
+            active: true,
+            startDate: { gt: snapshot.startDate },
+            NOT: { purchaseToken: input.purchaseToken },
+          },
+        })
+      : null;
+    const shouldActivate = input.plan === 'LIFETIME' || (!activeLifetime && !newerRecurring);
 
     if (shouldActivate) {
       await tx.subscription.updateMany({
