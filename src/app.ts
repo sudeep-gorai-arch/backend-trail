@@ -23,6 +23,11 @@ import { errorHandler } from './middlewares/error.middleware';
 
 const app: Application = express();
 
+// Render terminates TLS at one ingress proxy; trust that single hop so
+// per-client throttling uses the forwarded client address, not shared ingress IP.
+// Keep this to one hop, never unrestricted `trust proxy = true`.
+app.set('trust proxy', 1);
+
 
 
 
