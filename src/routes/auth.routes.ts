@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { rateLimit } from '../middlewares/rateLimit.middleware';
 import { z } from 'zod';
 
 import { authController } from '../controllers/auth.controller';
@@ -27,6 +28,7 @@ const loginSchema = z.object({
 router.post(
 
   '/login',
+  rateLimit('login', { windowMs: 15 * 60_000, max: 30 }),
 
   validate({
     body: loginSchema
@@ -60,6 +62,7 @@ router.post(
 //Google Login
 router.post(
   "/google",
+  rateLimit('google-login', { windowMs: 15 * 60_000, max: 60 }),
   validate({ body: z.object({ idToken: z.string().min(1).max(10000) }) }),
   asyncHandler(authController.google),
 );
