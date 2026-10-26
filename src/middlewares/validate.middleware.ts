@@ -1,11 +1,11 @@
 import { Request, Response, NextFunction } from "express";
-import { AnyZodObject, ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { ApiError } from "../utils/ApiError";
 
 interface ValidationSchemas {
-  body?: AnyZodObject;
-  query?: AnyZodObject;
-  params?: AnyZodObject;
+  body?: z.ZodObject;
+  query?: z.ZodObject;
+  params?: z.ZodObject;
 }
 
 export const validate =
@@ -37,7 +37,7 @@ export const validate =
           return next(
             ApiError.badRequest(
               "Validation failed",
-              error.flatten().fieldErrors
+              z.flattenError(error).fieldErrors
             )
           );
         }
