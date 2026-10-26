@@ -25,7 +25,7 @@ export const verifyGooglePlayPurchaseBody = z.object({
  * documented cancel survey reasons. The subscriptionsv2.cancel API cannot
  * submit user survey responses to Google Play.
  */
-export const googlePlayCancellationBody = z.object({
+export const googlePlayCancellationBody = z.strictObject({
   reason: z.enum([
     'CANCEL_SURVEY_REASON_NOT_ENOUGH_USAGE',
     'CANCEL_SURVEY_REASON_TECHNICAL_ISSUES',
@@ -33,4 +33,4 @@ export const googlePlayCancellationBody = z.object({
     'CANCEL_SURVEY_REASON_FOUND_BETTER_APP',
     'CANCEL_SURVEY_REASON_OTHERS',
   ]),
-}).strict();
+});

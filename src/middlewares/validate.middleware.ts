@@ -1,11 +1,11 @@
 import { Request, Response, NextFunction } from "express";
-import { AnyZodObject, ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { ApiError } from "../utils/ApiError";
 
 interface ValidationSchemas {
-  body?: AnyZodObject;
-  query?: AnyZodObject;
-  params?: AnyZodObject;
+  body?: z.ZodObject;
+  query?: z.ZodObject;
+  params?: z.ZodObject;
 }
 
 export const validate =
@@ -22,13 +22,19 @@ export const validate =
         }
 
         if (schemas.query) {
-          (req as Request & { query: unknown }).query =
-            schemas.query.parse(req.query);
+          // Express exposes req.query through a prototype getter in some versions;
+          // assign an own property instead of writing to that getter.
+          Object.defineProperty(req, 'query', {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: schemas.query.parse(req.query),
+          });
         }
 
         if (schemas.params) {
           (req as Request & { params: unknown }).params =
-            schemas.params.parse(req.params);
+            schemas.params.parse(req.params) as Request['params'];
         }
 
         next();
@@ -37,7 +43,7 @@ export const validate =
           return next(
             ApiError.badRequest(
               "Validation failed",
-              error.flatten().fieldErrors
+              z.flattenError(error).fieldErrors
             )
           );
         }

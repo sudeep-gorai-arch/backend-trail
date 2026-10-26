@@ -59,7 +59,7 @@ if (!parsed.success) {
   // eslint-disable-next-line no-console
   console.error(
     '❌ Invalid environment variables:\n',
-    JSON.stringify(parsed.error.flatten().fieldErrors, null, 2),
+    JSON.stringify(z.flattenError(parsed.error).fieldErrors, null, 2),
   );
   process.exit(1);
 }

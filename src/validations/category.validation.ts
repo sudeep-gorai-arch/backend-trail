@@ -1,3 +1,4 @@
+import { booleanInput, booleanFilter } from './common.validation';
 import { z } from "zod";
 
 // ======================================
@@ -17,7 +18,7 @@ export const categorySlugParams = z.object({
 // ======================================
 
 export const categoryListQuery = z.object({
-    active: z.coerce.boolean().optional(),
+    active: booleanFilter,
 
     search: z
         .string()
@@ -57,7 +58,7 @@ export const createCategoryBody = z.object({
 
     folderName: z.string().trim().optional(),
 
-    active: z.coerce.boolean().default(true),
+    active: booleanInput.default(true),
 
     sortOrder: z.coerce.number().int().min(0).default(0),
 });
@@ -79,7 +80,7 @@ export const updateCategoryBody = z.object({
 
     coverImage: z.string().trim().optional(),
 
-    active: z.coerce.boolean().optional(),
+    active: booleanFilter,
 
     sortOrder: z.coerce.number().int().min(0).optional(),
 });

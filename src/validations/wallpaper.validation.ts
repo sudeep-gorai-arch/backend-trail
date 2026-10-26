@@ -169,9 +169,9 @@ export const wallpaperListQuery = z.object({
 
   active: optionalBoolean,
 
-  mediaType: z.nativeEnum(WallpaperMediaType).optional(),
+  mediaType: z.enum(WallpaperMediaType).optional(),
 
-  quality: z.nativeEnum(WallpaperQuality).optional(),
+  quality: z.enum(WallpaperQuality).optional(),
 
   sort: z
     .enum(["latest", "popular", "downloads", "likes", "featured","random"])
@@ -191,9 +191,9 @@ export const createWallpaperBody = z.object({
 
   categoryId: z.string().uuid(),
 
-  mediaType: z.nativeEnum(WallpaperMediaType).optional(),
+  mediaType: z.enum(WallpaperMediaType).optional(),
 
-  quality: z.nativeEnum(WallpaperQuality).default(WallpaperQuality.UHD_4K),
+  quality: z.enum(WallpaperQuality).default(WallpaperQuality.UHD_4K),
 
   isPremium: defaultFalseBoolean,
 
@@ -223,9 +223,9 @@ export const updateWallpaperBody = z.object({
 
   categoryId: z.string().uuid().optional(),
 
-  mediaType: z.nativeEnum(WallpaperMediaType).optional(),
+  mediaType: z.enum(WallpaperMediaType).optional(),
 
-  quality: z.nativeEnum(WallpaperQuality).optional(),
+  quality: z.enum(WallpaperQuality).optional(),
 
   isPremium: optionalBoolean,
 
@@ -265,7 +265,7 @@ export const wallpaperStatusBody = z.object({
 // ======================================
 
 export const wallpaperDownloadBody = z.object({
-  quality: z.nativeEnum(WallpaperQuality).optional(),
+  quality: z.enum(WallpaperQuality).optional(),
 });
 
 // ======================================
