@@ -1,0 +1,59 @@
+name: Fix compatible npm advisories (review branch only)
+
+on:
+  push:
+    branches:
+      - fix/npm-audit-remediation-20261026
+
+permissions:
+  contents: write
+
+jobs:
+  audit-compatible-fixes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Checkout remediation branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: true
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Current security findings
+        shell: bash
+        run: |
+          npm audit --json > /tmp/audit-before.json || true
+          node -e 'const a=require("/tmp/audit-before.json"); console.log("BEFORE",a.metadata?.vulnerabilities); console.log("Affected:",Object.entries(a.vulnerabilities||{}).map(([name,v])=>({name,severity:v.severity,via:v.via.map(x=>typeof x==="string"?x:x.name),fixAvailable:v.fixAvailable})));'
+      - name: Update lockfile with compatible remediations only
+        shell: bash
+        run: |
+          npm audit fix --package-lock-only --include=dev --no-fund || true
+          git diff --stat -- package.json package-lock.json
+      - name: Verify resolution and remaining issues
+        shell: bash
+        run: |
+          npm audit --json > /tmp/audit-after.json || true
+          npm audit --omit=dev --json > /tmp/audit-prod.json || true
+          node -e 'for(const [label,file] of [["AFTER","/tmp/audit-after.json"],["PROD_ONLY","/tmp/audit-prod.json"]]) {const a=require(file); console.log(label,a.metadata?.vulnerabilities); console.log("Remaining:",Object.entries(a.vulnerabilities||{}).map(([name,v])=>({name,severity:v.severity,via:v.via.map(x=>typeof x==="string"?x:x.name),fixAvailable:v.fixAvailable})));}'
+      - name: Install, test and build after safe fixes
+        shell: bash
+        env:
+          DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+        run: |
+          npm ci --include=dev --ignore-scripts --no-fund --no-audit
+          npm run test:security
+          npm run build
+      - name: Commit updated npm lockfile to the remediation branch
+        shell: bash
+        run: |
+          if git diff --quiet -- package.json package-lock.json; then
+            echo "No compatible lockfile changes available"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package.json package-lock.json
+            git commit -m "fix: apply compatible npm advisory remediations"
+            git push origin HEAD:fix/npm-audit-remediation-20261026
+          fi
