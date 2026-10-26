@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
-import { ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 import { ApiError } from '../utils/ApiError';
 import { env } from '../config/env';
 
@@ -24,7 +24,7 @@ export const errorHandler = (
     return res.status(400).json({
       success: false,
       message: 'Validation failed',
-      errors: err.flatten().fieldErrors,
+      errors: z.flattenError(err).fieldErrors,
     });
   }
 
