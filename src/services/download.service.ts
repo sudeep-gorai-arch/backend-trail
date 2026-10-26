@@ -520,13 +520,22 @@ export const downloadService = {
     const wallpaper = await getWallpaper(input.wallpaperId);
     const access = await getAccessState({ ...input, wallpaper });
 
-    return buildAccessResponse({
+    // Preflight checks eligibility only. Never expose full-resolution media
+    // before an atomic, quota-counted commit, even when the client is modified.
+    const preview = buildAccessResponse({
       wallpaper,
       dailyDownloadCount: access.dailyCount,
       premiumActive: access.premiumActive,
       isGuest: access.isGuest,
       downloadCount: wallpaper.downloadCount,
     });
+    return {
+      ...preview,
+      downloadUrl: null,
+      imageUrl: null,
+      videoUrl: null,
+      videoPreviewUrl: null,
+    };
   },
 
   async commit(input: CommitDownloadInput) {
