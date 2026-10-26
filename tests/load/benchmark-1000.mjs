@@ -42,6 +42,7 @@ let inFlight = 0;
 let peakInFlight = 0;
 const startedAt = new Date();
 let durationMs = 0;
+const securityChecks = {};
 
 const percentile = p => {
   if (!latencies.length) return null;
@@ -122,7 +123,7 @@ function send(session, label, method, route, body, expectedStatus = 200) {
         bucket.unexpected++;
         unexpected++;
       }
-      resolve();
+      resolve({ status, error });
     };
     const payload = body === undefined ? undefined : JSON.stringify(body);
     const headers = {
@@ -185,6 +186,31 @@ try {
   const began = performance.now();
   await Promise.all(sessions.map(session => virtualUser(session, wallpapers)));
   durationMs = performance.now() - began;
+
+  // SECURITY NEGATIVE CHECKS, ISOLATED ONLY: no media bytes downloaded.
+  // Demonstrate whether repeated free preflight requests without /commit can
+  // return a usable download URL more times than the daily free quota.
+  const guest = sessions[0];
+  const attempts = await Promise.all(
+    Array.from({ length: 6 }, () => send(
+      guest, 'quota-preflight-replay-probe', 'POST',
+      '/api/downloads/public/preflight', { wallpaperId: wallpapers.freeWallpaper }, 200,
+    )),
+  );
+  const guestDb = await prisma.guest.findUnique({ where: { id: guest.guestId } });
+  securityChecks.uncommittedQuotaBypass = {
+    sixPreflightsAllowed: attempts.every(x => x.status === 200),
+    storedDownloadCount: guestDb?.dailyDownloadCount ?? null,
+    vulnerable: attempts.every(x => x.status === 200) && guestDb?.dailyDownloadCount === 0,
+  };
+
+  // Anonymous users should not be able to upload wallpaper metadata/media.
+  const unauthorized = await send(
+    guest, 'unauthorized-admin-upload-probe', 'POST',
+    '/api/wallpapers', {}, 401,
+  );
+  securityChecks.unauthorizedAdminUploadDenied = unauthorized.status === 401;
+
 } finally {
   if (server) await new Promise(resolve => server.close(resolve));
   agent.destroy();
@@ -206,6 +232,7 @@ const report = {
   },
   latencyMs: { p50: percentile(50), p95: percentile(95), p99: percentile(99), max: percentile(100) },
   durationSeconds: Math.round(durationMs / 10) / 100,
+  securityChecks,
   processRssMiB: Math.round(process.memoryUsage().rss / 1048576),
   caveats: [
     'Backend endpoints and transient local PostgreSQL exercised; media bytes, AdMob, Android UI, Google Play and actual Render hardware are not.',
@@ -239,6 +266,11 @@ const md = [
   '| Scenario | Requests | Unexpected | HTTP status counts |',
   '|---|---:|---:|---|',
   ...Object.entries(results).sort().map(([k, v]) => '| ' + k + ' | ' + v.count + ' | ' + v.unexpected + ' | ' + JSON.stringify(v.statuses) + ' |'),
+  '',
+  '## Isolated security probes',
+  '',
+  '- Quota bypass by skipping commit: ' + (securityChecks.uncommittedQuotaBypass?.vulnerable ? '**CONFIRMED**' : '**Not observed**') + ' (6 accepted preflights; persisted count ' + securityChecks.uncommittedQuotaBypass?.storedDownloadCount + ').',
+  '- Anonymous admin upload denied: ' + (securityChecks.unauthorizedAdminUploadDenied ? '**PASS**' : '**FAIL**') + '.',
   '',
   '## Scope limits',
   ...report.caveats.map(v => '- ' + v),
