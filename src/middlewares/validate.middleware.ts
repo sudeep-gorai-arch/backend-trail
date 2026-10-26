@@ -23,12 +23,12 @@ export const validate =
 
         if (schemas.query) {
           (req as Request & { query: unknown }).query =
-            schemas.query.parse(req.query);
+            schemas.query.parse(req.query) as Request['query'];
         }
 
         if (schemas.params) {
           (req as Request & { params: unknown }).params =
-            schemas.params.parse(req.params);
+            schemas.params.parse(req.params) as Request['params'];
         }
 
         next();
