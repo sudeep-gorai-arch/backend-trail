@@ -1,3 +1,4 @@
+import { booleanInput, booleanFilter } from './common.validation';
 import { z } from "zod";
 
 // ======================================
@@ -60,10 +61,7 @@ export const updateUserBody = z.object({
         .uuid()
         .optional(),
 
-    isPremium: z
-        .coerce
-        .boolean()
-        .optional(),
+    isPremium: booleanFilter,
 
     premiumUntil: z
         .coerce
@@ -84,7 +82,7 @@ export const changeRoleBody = z.object({
 // ======================================
 
 export const premiumBody = z.object({
-    isPremium: z.coerce.boolean(),
+    isPremium: booleanInput,
 
     premiumUntil: z
         .coerce
@@ -120,10 +118,7 @@ export const userListQuery = z.object({
         .uuid()
         .optional(),
 
-    premium: z
-        .coerce
-        .boolean()
-        .optional(),
+    premium: booleanFilter,
 
     provider: z
         .enum([
