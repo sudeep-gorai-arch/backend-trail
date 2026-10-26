@@ -23,6 +23,7 @@ jobs:
           DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
         run: |
           npm ci --include=dev --ignore-scripts --no-fund
+          npx prisma generate
           npm run test:security
           npm run build
           npm audit --omit=dev
