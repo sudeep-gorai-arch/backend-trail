@@ -55,9 +55,9 @@ async function seed() {
   await prisma.category.create({
     data: { id: categoryId, name: 'Load test', slug: 'qa-only', folderName: 'qa_only', active: true },
   });
-  const wallpapers = Array.from({ length: 30 }, (_, i) => ({
+  const wallpapers = Array.from({ length: 250 }, (_, i) => ({
     id: randomUUID(), categoryId, title: 'Load wallpaper ' + i, slug: 'load-' + i,
-    mediaType: 'IMAGE', status: 'READY', isPremium: i >= 20,
+    mediaType: 'IMAGE', status: 'READY', isPremium: i >= 150,
     isFeatured: i % 3 === 0, originalPath: 'https://invalid.example/' + i + '/original.webp',
     displayPath: 'https://invalid.example/' + i + '/display.webp',
     thumbnailPath: 'https://invalid.example/' + i + '/thumb.webp',
@@ -103,7 +103,7 @@ async function seed() {
       ip: '198.18.' + Math.floor((id + 1) / 256) + '.' + ((id + 1) % 256),
     });
   }
-  return { freeWallpaper: wallpapers[2].id, premiumWallpaper: wallpapers[24].id };
+  return { freeWallpaper: wallpapers[2].id, premiumWallpaper: wallpapers[220].id };
 }
 
 function send(session, label, method, route, body, expectedStatus = 200) {
