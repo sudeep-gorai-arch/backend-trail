@@ -15,6 +15,7 @@ import {
 import { ApiError } from '../utils/ApiError';
 import { subscriptionService } from './subscription.service';
 import { getGooglePlayRenewalDetails } from '../utils/googlePlayRenewal';
+import { googlePlayStableOrderId } from '../utils/googlePlayOrderIdentity';
 
 type GooglePlayPlan = Extract<
   PaidSubscriptionPlan,
@@ -54,11 +55,7 @@ const PLAN_BY_PRODUCT_ID = Object.fromEntries(
 const hashAccountId = (userId: string) =>
   createHash('sha256').update(userId).digest('hex');
 
-const tokenOrderId = (purchaseToken: string) =>
-  `google_${createHash('sha256')
-    .update(purchaseToken)
-    .digest('hex')
-    .slice(0, 48)}`;
+const tokenOrderId = googlePlayStableOrderId;
 
 const lifetimeEndDate = (from: Date) => {
   const end = new Date(from);
@@ -300,7 +297,8 @@ const persistEntitlement = async (
           data: {
             plan: input.plan,
             platform: SubscriptionPlatform.GOOGLE,
-            orderId: snapshot.orderId,
+            // Keep this unique key stable across Play renewals/order changes.
+            orderId: tokenOrderId(input.purchaseToken),
             transactionId: snapshot.orderId,
             amount: snapshot.amount,
             currency: snapshot.currency,
@@ -315,7 +313,8 @@ const persistEntitlement = async (
             userId,
             plan: input.plan,
             platform: SubscriptionPlatform.GOOGLE,
-            orderId: snapshot.orderId,
+            // Keep this unique key stable across Play renewals/order changes.
+            orderId: tokenOrderId(input.purchaseToken),
             purchaseToken: input.purchaseToken,
             transactionId: snapshot.orderId,
             amount: snapshot.amount,
@@ -338,7 +337,9 @@ const persistEntitlement = async (
       await tx.payment.update({
         where: { id: duplicateOrder.id },
         data: {
-          subscriptionId: subscription.id,
+          // An existing order may be linked to an older token from the same account.
+          // Preserve payment history rather than moving the link on every sync.
+          subscriptionId: duplicateOrder.subscriptionId ?? subscription.id,
           platform: SubscriptionPlatform.GOOGLE,
           amount: snapshot.amount,
           currency: snapshot.currency,
