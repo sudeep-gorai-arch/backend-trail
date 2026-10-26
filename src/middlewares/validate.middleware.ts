@@ -22,8 +22,14 @@ export const validate =
         }
 
         if (schemas.query) {
-          (req as Request & { query: unknown }).query =
-            schemas.query.parse(req.query) as Request['query'];
+          // Express exposes req.query through a prototype getter in some versions;
+          // assign an own property instead of writing to that getter.
+          Object.defineProperty(req, 'query', {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: schemas.query.parse(req.query),
+          });
         }
 
         if (schemas.params) {
