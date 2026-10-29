@@ -1,0 +1,70 @@
+name: Isolated 1,000-user API load experiment
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/isolated-load-test.yml'
+      - 'tests/load/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-api-load-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: loadtest
+          POSTGRES_PASSWORD: loadtest
+          POSTGRES_DB: flexiwalls_load
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U loadtest -d flexiwalls_load"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://loadtest:loadtest@127.0.0.1:5432/flexiwalls_load
+      JWT_SECRET: isolated_load_only_fake_jwt_secret_0123456789
+      JWT_EXPIRES_IN: 2h
+      PORT: 8765
+      CORS_ORIGIN: '*'
+      GOOGLE_CLIENT_ID: test-unused
+      RAZORPAY_KEY_ID: rzp_test_not_real_loadtest
+      RAZORPAY_KEY_SECRET: loadtest_not_real_payment_secret
+      RAZORPAY_WEBHOOK_SECRET: loadtest_not_real_webhook
+      R2_ACCOUNT_ID: test-account-id-no-remote-calls
+      R2_ACCESS_KEY_ID: test-nonexistent-key
+      R2_SECRET_ACCESS_KEY: test-nonexistent-secret
+      R2_BUCKET_NAME: test-isolated
+      R2_PUBLIC_URL: https://invalid.example
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Set up Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install pinned backend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Build actual backend
+        run: npm run build
+      - name: Create disposable isolated schema
+        run: npx prisma db push --accept-data-loss
+      - name: Run 1,000 virtual users against real Express routes and temporary Postgres
+        run: node tests/load/benchmark-1000.mjs
+      - name: Upload isolated load report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: flexiwalls-isolated-1000-vu
+          path: artifacts/isolated-load-1000.*
+          if-no-files-found: warn
